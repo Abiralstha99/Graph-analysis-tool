@@ -1,13 +1,6 @@
 import React, { useRef } from 'react';
 import { Box, VStack, Text, HStack, Button, Badge, useColorModeValue } from '@chakra-ui/react';
-
-interface RangeWeight {
-  min: number;
-  max: number;
-  weight: number;
-  label: string;
-  key: string;
-}
+import type { RangeWeight } from '../../types';
 
 interface Props {
   x: number[];

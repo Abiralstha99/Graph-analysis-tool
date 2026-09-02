@@ -19,17 +19,12 @@ import {
   useColorModeValue
 } from '@chakra-ui/react';
 import { ChevronLeftIcon, ChevronRightIcon, ChatIcon } from '@chakra-ui/icons';
+import type { ParsedCSV } from '../../types';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp?: string;
-}
-
-interface ParsedCSV {
-  filename: string;
-  x: number[];
-  y: number[];
 }
 
 interface GraphData {

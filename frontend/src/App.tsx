@@ -1,13 +1,10 @@
 import React from 'react';
-import { ChakraProvider, ColorModeScript } from '@chakra-ui/react';
+import { ChakraProvider } from '@chakra-ui/react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import './index.css';
 import theme from './theme';
-import { AuthProvider } from './contexts/AuthContext';
-import ProtectedRoute from './components/auth/ProtectedRoute';
-import Login from './components/auth/Login';
-import Signup from './components/auth/Signup';
-import Dashboard from './pages/Dashboard';
+import { AuthProvider, Login, ProtectedRoute, Signup } from './features/auth';
+import { Dashboard } from './features/dashboard';
 
 const App: React.FC = () => {
   return (
@@ -42,11 +39,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-
-import ReactDOM from 'react-dom/client';
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <>
-    <ColorModeScript initialColorMode={theme.config.initialColorMode} />
-    <App />
-  </>
-);

@@ -1,15 +1,12 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 from typing import List, Optional
-import os
 from datetime import datetime
 import json
 import traceback
-from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+from .config import Settings
+from .schemas.chat import ChatMessage, ChatRequest, ChatResponse
 
 try:
     import google.generativeai as genai
@@ -19,30 +16,6 @@ except ImportError:
     genai = None
 
 router = APIRouter(prefix="/chat", tags=["Chatbox"])
-
-# Configure Gemini AI
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-else:
-    print("Warning: GEMINI_API_KEY environment variable not set")
-
-# Pydantic models for request/response
-class ChatMessage(BaseModel):
-    role: str  # "user" or "assistant"
-    content: str
-    timestamp: Optional[str] = None
-
-class ChatRequest(BaseModel):
-    message: str
-    conversation_history: Optional[List[ChatMessage]] = []
-    context: Optional[str] = None  # Additional context about current graphs/analysis
-
-class ChatResponse(BaseModel):
-    response: str
-    conversation_id: Optional[str] = None
-    timestamp: str
-    status: str
 
 # In-memory storage for conversation sessions (in production, use a database)
 conversation_sessions = {}
@@ -128,11 +101,14 @@ async def send_chat_message(request: ChatRequest):
                 content={"error": "Google Generative AI library not available"}
             )
         
-        if not GEMINI_API_KEY:
+        settings = Settings.from_environment()
+        if not settings.gemini_api_key:
             return JSONResponse(
                 status_code=500, 
                 content={"error": "Gemini AI API key not configured"}
             )
+
+        genai.configure(api_key=settings.gemini_api_key)
         
         # Generate conversation ID if this is a new conversation
         conversation_id = generate_conversation_id()
@@ -353,11 +329,14 @@ async def ask_quick_question(request: dict):
                 content={"error": "Google Generative AI library not available"}
             )
         
-        if not GEMINI_API_KEY:
+        settings = Settings.from_environment()
+        if not settings.gemini_api_key:
             return JSONResponse(
                 status_code=500, 
                 content={"error": "Gemini AI API key not configured"}
             )
+
+        genai.configure(api_key=settings.gemini_api_key)
         
         question = request.get("question", "")
         if not question:
@@ -426,7 +405,7 @@ async def ask_quick_question(request: dict):
 @router.get("/health")
 async def chat_health():
     """Health check for chat service"""
-    gemini_status = "configured" if GEMINI_API_KEY else "not_configured"
+    gemini_status = "configured" if Settings.from_environment().gemini_api_key else "not_configured"
     return {
         "status": "ok",
         "gemini_api": gemini_status,

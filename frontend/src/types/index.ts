@@ -30,8 +30,6 @@ export type {
 
 // Re-export API types
 export type {
-  RangeWeight as ApiRangeWeight,
-  ScoringMethod as ApiScoringMethod,
   AnalysisRequest,
   DeviationRequest,
   ScoresRequest,

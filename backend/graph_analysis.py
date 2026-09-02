@@ -1,16 +1,14 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from typing import List, Optional
-import os
 import base64
 import io
 import tempfile
 import json
 import traceback
-from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+from .config import Settings
+from .services.graph_statistics import summarize_series
 
 try:
     import google.generativeai as genai
@@ -40,13 +38,6 @@ except ImportError:
         return df
 
 router = APIRouter(prefix="/analysis", tags=["Graph Analysis"])
-
-# Configure Gemini AI
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-else:
-    print("Warning: GEMINI_API_KEY environment variable not set")
 
 def generate_graph_image(baseline_df, sample_df, sample_name: str) -> bytes:
     """Generate a graph image for AI analysis"""
@@ -78,33 +69,18 @@ def generate_graph_image(baseline_df, sample_df, sample_name: str) -> bytes:
 def analyze_data_statistics(baseline_df, sample_df, sample_name: str) -> dict:
     """Generate statistical summary of the data"""
     try:
-        stats = {
-            "sample_name": sample_name,
-            "baseline_stats": {
-                "count": len(baseline_df),
-                "mean_y": float(baseline_df.iloc[:, 1].mean()),
-                "std_y": float(baseline_df.iloc[:, 1].std()),
-                "min_y": float(baseline_df.iloc[:, 1].min()),
-                "max_y": float(baseline_df.iloc[:, 1].max()),
-                "range_x": [float(baseline_df.iloc[:, 0].min()), float(baseline_df.iloc[:, 0].max())]
-            },
-            "sample_stats": {
-                "count": len(sample_df),
-                "mean_y": float(sample_df.iloc[:, 1].mean()),
-                "std_y": float(sample_df.iloc[:, 1].std()),
-                "min_y": float(sample_df.iloc[:, 1].min()),
-                "max_y": float(sample_df.iloc[:, 1].max()),
-                "range_x": [float(sample_df.iloc[:, 0].min()), float(sample_df.iloc[:, 0].max())]
-            }
-        }
-        
-        # Calculate differences
-        stats["differences"] = {
-            "mean_diff": stats["sample_stats"]["mean_y"] - stats["baseline_stats"]["mean_y"],
-            "std_diff": stats["sample_stats"]["std_y"] - stats["baseline_stats"]["std_y"],
-            "range_diff": stats["sample_stats"]["max_y"] - stats["sample_stats"]["min_y"] - (stats["baseline_stats"]["max_y"] - stats["baseline_stats"]["min_y"])
-        }
-        
+        stats = summarize_series(
+            baseline_df.iloc[:, 1].tolist(), sample_df.iloc[:, 1].tolist()
+        )
+        stats["sample_name"] = sample_name
+        stats["baseline_stats"]["range_x"] = [
+            float(baseline_df.iloc[:, 0].min()),
+            float(baseline_df.iloc[:, 0].max()),
+        ]
+        stats["sample_stats"]["range_x"] = [
+            float(sample_df.iloc[:, 0].min()),
+            float(sample_df.iloc[:, 0].max()),
+        ]
         return stats
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error analyzing statistics: {str(e)}")
@@ -132,11 +108,14 @@ async def generate_graph_insights(
                 content={"error": "Matplotlib library not available"}
             )
         
-        if not GEMINI_API_KEY:
+        settings = Settings.from_environment()
+        if not settings.gemini_api_key:
             return JSONResponse(
                 status_code=500, 
                 content={"error": "Gemini AI API key not configured"}
             )
+
+        genai.configure(api_key=settings.gemini_api_key)
         
         # Process uploaded files
         try:
@@ -308,7 +287,7 @@ The sample shows {"increased absorption" if stats['differences']['mean_diff'] > 
 @router.get("/health")
 async def analysis_health():
     """Health check for analysis service"""
-    gemini_status = "configured" if GEMINI_API_KEY else "not_configured"
+    gemini_status = "configured" if Settings.from_environment().gemini_api_key else "not_configured"
     return {
         "status": "ok",
         "gemini_api": gemini_status,

@@ -1,14 +1,8 @@
 // TypeScript type definitions for API integration
 
-export interface RangeWeight {
-  min: number;
-  max: number;
-  weight: number;
-  label: string;
-  key: string;
-}
+import type { RangeWeight, ScoringMethod } from './common';
 
-export type ScoringMethod = 'rmse' | 'hybrid' | 'pearson' | 'area';
+export type { RangeWeight, ScoringMethod } from './common';
 
 // ===== REQUEST TYPES =====
 

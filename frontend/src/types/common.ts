@@ -1,8 +1,10 @@
 // Common types used throughout the application
 
 export interface User {
-  name: string;
-  email: string;
+  id?: number;
+  username: string;
+  name?: string;
+  email?: string;
   avatarUrl?: string;
   backgroundUrl?: string;
 }
@@ -48,7 +50,7 @@ export type Status = 'good' | 'warning' | 'critical';
 // Utility function to get sample status - centralized
 export const getSampleStatus = (score: number | undefined): Status => {
   if (score === undefined) return 'good';
-  if (score >= 90) return 'good';
+  if (score >= 85) return 'good';
   if (score >= 70) return 'warning';
   return 'critical';
 };

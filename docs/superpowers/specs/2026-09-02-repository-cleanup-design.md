@@ -35,7 +35,8 @@ Organize `backend` by responsibility:
 - `api`: FastAPI application factory and routers.
 - `schemas`: Pydantic request and response models.
 - `services`: graph-analysis, chat, authentication, and file-processing application services.
-- `core`: configuration, dependency setup, and error-handling primitives.
+- `config.py`: environment-backed application settings.
+- `database.py`: database connection and persistence helpers.
 - `utils`: focused plotting/data helpers.
 
 Existing HTTP paths, methods, request formats, and response formats remain unchanged. Routers perform validation and translate service outcomes to HTTP responses. Services contain use-case orchestration; helpers contain pure data and plotting transformations. Environment/configuration access is centralized and no module performs configuration or provider setup as an import-time side effect.

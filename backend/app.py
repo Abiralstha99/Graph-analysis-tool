@@ -9,15 +9,13 @@ import tempfile
 import shutil
 import secrets
 import bcrypt
-import mysql.connector
 from mysql.connector import IntegrityError
-from dotenv import load_dotenv
 
+from .config import Settings
+from .database import get_db_connection
 from .utils.plotter import generate_and_save, SAVE_DIR
 from .graph_analysis import router as analysis_router
 from .chatbox import router as chat_router
-
-load_dotenv()
 
 app = FastAPI(title="MRG Labs Graphing API")
 
@@ -38,36 +36,12 @@ app.add_middleware(
 # Session middleware for simple server-side sessions
 from starlette.middleware.sessions import SessionMiddleware
 
-SESSION_SECRET = os.getenv('SESSION_SECRET') or os.getenv('SECRET_KEY') or secrets.token_urlsafe(32)
+SESSION_SECRET = Settings.from_environment().session_secret or secrets.token_urlsafe(32)
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 
 # Static mounting for generated graphs
 static_root = os.path.join(os.path.dirname(__file__), 'static')
 app.mount("/static", StaticFiles(directory=static_root), name="static")
-
-
-def get_db_connection():
-    """Create a MySQL connection using env vars loaded from .env.
-
-    Expects DB_HOST, DB_USER, DB_PASS, DB_NAME in environment.
-    Caller is responsible for closing the connection.
-    """
-    db_host = os.getenv('DB_HOST')
-    db_user = os.getenv('DB_USER')
-    db_pass = os.getenv('DB_PASS')
-    db_name = os.getenv('DB_NAME')
-
-    if not all([db_host, db_user, db_pass, db_name]):
-        raise RuntimeError('Database environment variables DB_HOST, DB_USER, DB_PASS, DB_NAME must be set')
-
-    conn = mysql.connector.connect(
-        host=db_host,
-        user=db_user,
-        password=db_pass,
-        database=db_name,
-        autocommit=False,
-    )
-    return conn
 
 
 def hash_password(plain_password: str) -> str:

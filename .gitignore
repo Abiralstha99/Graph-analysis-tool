@@ -30,6 +30,8 @@ env/
 ENV/
 env.bak/
 venv.bak/
+backend/.venv/
+backend/**/__pycache__/
 
 # IDEs
 .vscode/

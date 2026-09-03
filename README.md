@@ -139,11 +139,13 @@ Open browser to **http://localhost:5173**
 - `POST /register` - Create new user account
 - `POST /login` - Login user (creates session)
 - `POST /logout` - Logout user (clears session)
+- `POST /change_password` - Change the authenticated user's password
 
 ### Graph Operations
 
 - `POST /generate_graphs` - Generate and export graphs (requires auth)
 - `GET /api/v1/files` - Get user's generated files (requires auth)
+- `GET /health` - Check backend health
 
 ### AI Services
 
@@ -151,6 +153,8 @@ Open browser to **http://localhost:5173**
 - `GET /analysis/health` - Check analysis service status
 - `POST /chat/send_message` - Send message to AI chatbot
 - `POST /chat/quick_question` - Ask quick question without conversation
+- `GET /chat/conversation/{conversation_id}` - Retrieve a conversation
+- `DELETE /chat/conversation/{conversation_id}` - Clear a conversation
 - `GET /chat/health` - Check chat service status
 
 ## 🐳 Docker Deployment

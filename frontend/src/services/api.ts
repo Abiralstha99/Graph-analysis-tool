@@ -1,9 +1,9 @@
 import axios, { AxiosResponse } from 'axios';
 
 // Base API configuration
-const API_BASE = process.env.NODE_ENV === 'production' 
-  ? '/api' 
-  : 'http://localhost:5000';
+const API_BASE = import.meta.env.PROD
+  ? '/api'
+  : import.meta.env.VITE_API_BASE_URL || '/api';
 
 const api = axios.create({
   baseURL: API_BASE,

@@ -40,6 +40,18 @@ export interface SampleScore {
   status: 'good' | 'warning' | 'critical';
 }
 
+export interface AnalysisInsight {
+  sample_name: string;
+  statistics: Record<string, unknown>;
+  ai_insights: string;
+  metadata: {
+    baseline_file: string | null;
+    sample_file: string | null;
+    analysis_timestamp?: string;
+    status?: string;
+  };
+}
+
 export interface DeviationData {
   x: number[];
   deviation: number[];
@@ -49,16 +61,13 @@ export interface DeviationData {
 
 export interface AnalysisResponse {
   success: boolean;
-  scores: { [filename: string]: number };
-  deviationData?: DeviationData;
-  processingTime: number;
+  results: AnalysisInsight[];
   metadata: {
     baseline_filename: string;
     sample_count: number;
-    scoring_method: ScoringMethod;
-    zone_weights_used: RangeWeight[];
     timestamp: string;
   };
+  processingTime: number;
 }
 
 export interface DeviationResponse {

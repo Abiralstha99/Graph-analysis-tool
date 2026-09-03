@@ -13,13 +13,16 @@ import {
 
 describe('File System Access Utilities', () => {
   let originalWindow: any;
+  let originalDocument: any;
 
   beforeEach(() => {
     originalWindow = global.window;
+    originalDocument = global.document;
   });
 
   afterEach(() => {
     global.window = originalWindow;
+    global.document = originalDocument;
   });
 
   describe('checkFolderAccessSupported', () => {
@@ -58,17 +61,17 @@ describe('File System Access Utilities', () => {
           createObjectURL,
           revokeObjectURL
         },
-        document: {
-          createElement: vi.fn().mockReturnValue({
-            click,
-            href: '',
-            download: '',
-            style: {}
-          }),
-          body: {
-            appendChild,
-            removeChild
-          }
+      } as any;
+      global.document = {
+        createElement: vi.fn().mockReturnValue({
+          click,
+          href: '',
+          download: '',
+          style: {}
+        }),
+        body: {
+          appendChild,
+          removeChild
         }
       } as any;
 
@@ -175,17 +178,17 @@ describe('File System Access Utilities', () => {
           createObjectURL,
           revokeObjectURL
         },
-        document: {
-          createElement: vi.fn().mockReturnValue({
-            click,
-            href: '',
-            download: '',
-            style: {}
-          }),
-          body: {
-            appendChild,
-            removeChild
-          }
+      } as any;
+      global.document = {
+        createElement: vi.fn().mockReturnValue({
+          click,
+          href: '',
+          download: '',
+          style: {}
+        }),
+        body: {
+          appendChild,
+          removeChild
         }
       } as any;
 

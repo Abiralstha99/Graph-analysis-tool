@@ -18,24 +18,38 @@ import type { RangeWeight, ScoringMethod } from '../../../types';
 export class FTIRApiService {
   
   /**
-   * Analyze FTIR samples with full analysis including scores and deviation data
+   * Analyze FTIR samples using the backend's single-sample insights endpoint.
+   * The public client method remains batch-oriented and aggregates the results.
    */
   static async analyzeSamples(request: AnalysisRequest): Promise<AnalysisResponse> {
-    const formData = new FormData();
-    
-    formData.append('baseline', request.baseline);
-    request.samples.forEach(sample => formData.append('samples', sample));
-    formData.append('scoring_method', request.scoringMethod);
-    
-    if (request.zoneWeights) {
-      formData.append('zone_weights', JSON.stringify(request.zoneWeights));
+    if (request.samples.length === 0) {
+      throw new Error('At least one sample is required for analysis');
     }
 
-    const response = await api.post<AnalysisResponse>('/analysis/ftir/analyze', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
+    const startedAt = performance.now();
+    const results = await Promise.all(request.samples.map(async (sample) => {
+      const formData = new FormData();
+      formData.append('baseline', request.baseline);
+      formData.append('sample', sample);
+      formData.append('sample_name', sample.name);
 
-    return response.data;
+      const response = await api.post('/analysis/generate_insights', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      return response.data;
+    }));
+
+    return {
+      success: true,
+      results,
+      metadata: {
+        baseline_filename: request.baseline.name,
+        sample_count: results.length,
+        timestamp: new Date().toISOString(),
+      },
+      processingTime: performance.now() - startedAt,
+    };
   }
 
   /**

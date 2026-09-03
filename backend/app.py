@@ -16,6 +16,7 @@ from .database import get_db_connection
 from .utils.plotter import generate_and_save, SAVE_DIR
 from .graph_analysis import router as analysis_router
 from .chatbox import router as chat_router
+from .schemas.error import ErrorResponse, ErrorDetail
 
 app = FastAPI(title="MRG Labs Graphing API")
 
@@ -42,6 +43,42 @@ app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 # Static mounting for generated graphs
 static_root = os.path.join(os.path.dirname(__file__), 'static')
 app.mount("/static", StaticFiles(directory=static_root), name="static")
+
+
+# Global exception handler for HTTPException
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Convert HTTPException to canonical error response format."""
+    # Extract code from detail if provided as "CODE:message", else use a default
+    detail = exc.detail or "An error occurred"
+    code = "INTERNAL_ERROR"
+    message = detail
+    
+    # Try to parse code from detail string (format: "CODE:message")
+    if isinstance(detail, str) and ":" in detail:
+        parts = detail.split(":", 1)
+        code = parts[0].strip()
+        message = parts[1].strip()
+    
+    # Map HTTP status codes to error codes if not explicitly provided
+    if code == "INTERNAL_ERROR":
+        status_code_to_code = {
+            status.HTTP_400_BAD_REQUEST: "VALIDATION_ERROR",
+            status.HTTP_401_UNAUTHORIZED: "UNAUTHORIZED",
+            status.HTTP_403_FORBIDDEN: "FORBIDDEN",
+            status.HTTP_404_NOT_FOUND: "NOT_FOUND",
+            status.HTTP_422_UNPROCESSABLE_ENTITY: "VALIDATION_ERROR",
+            status.HTTP_500_INTERNAL_SERVER_ERROR: "INTERNAL_ERROR",
+        }
+        code = status_code_to_code.get(exc.status_code, "INTERNAL_ERROR")
+    
+    error_response = ErrorResponse(
+        error=ErrorDetail(code=code, message=message, details={})
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error_response.model_dump(),
+    )
 
 
 def hash_password(plain_password: str) -> str:

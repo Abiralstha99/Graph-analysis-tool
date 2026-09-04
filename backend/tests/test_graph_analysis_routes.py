@@ -12,7 +12,20 @@ client = TestClient(app)
 
 
 def test_ftir_analyze_route_replaces_legacy_route():
-    paths = {route.path for route in app.routes}
+    def collect_paths(routes):
+        """Collect all paths, recursing into included routers."""
+        paths = set()
+        for route in routes:
+            if hasattr(route, "path"):
+                paths.add(route.path)
+            # FastAPI >= 0.115 wraps included routers in _IncludedRouter
+            if hasattr(route, "original_router"):
+                paths |= collect_paths(route.original_router.routes)
+            elif hasattr(route, "routes"):
+                paths |= collect_paths(route.routes)
+        return paths
+
+    paths = collect_paths(app.routes)
 
     assert "/analysis/ftir/analyze" in paths
     assert "/analysis/generate_insights" not in paths

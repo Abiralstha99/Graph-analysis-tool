@@ -37,8 +37,13 @@ def register(payload: UserAuth):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="username already exists",
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An internal error occurred. Please try again.",
+        )
     finally:
         if conn:
             conn.close()
@@ -141,8 +146,11 @@ def change_password(
         return {"status": "ok", "message": "Password updated successfully"}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An internal error occurred. Please try again.",
+        )
     finally:
         if conn:
             conn.close()

@@ -17,6 +17,7 @@ from .utils.plotter import generate_and_save, SAVE_DIR
 from .graph_analysis import router as analysis_router
 from .chatbox import router as chat_router
 from .schemas.error import ErrorResponse, ErrorDetail
+from .middleware.auth import require_auth
 
 app = FastAPI(title="MRG Labs Graphing API")
 
@@ -94,13 +95,6 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 
-async def get_current_user_id(request: Request) -> int:
-    user_id = request.session.get('user_id')
-    if user_id is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Not authenticated')
-    return int(user_id)
-
-
 from pydantic import BaseModel
 
 
@@ -175,7 +169,7 @@ class ChangePasswordPayload(BaseModel):
 
 
 @app.post('/change_password')
-def change_password(payload: ChangePasswordPayload, user_id: int = Depends(get_current_user_id)):
+def change_password(payload: ChangePasswordPayload, user_id: int = Depends(require_auth)):
     current_password = payload.current_password
     new_password = payload.new_password
     
@@ -221,7 +215,7 @@ def change_password(payload: ChangePasswordPayload, user_id: int = Depends(get_c
 #     samples: List[UploadFile] = File(...),
 #     save_dir: str | None = Form(None),
 #     format: str = Form("png"),
-#     user_id: int = Depends(get_current_user_id)
+#     user_id: int = Depends(require_auth)
 # ):
 #     try:
 #         # Generate the graphs and get their file paths
@@ -329,7 +323,7 @@ async def generate_graphs(
     except Exception as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
 @app.get('/api/v1/files')
-def list_user_files(user_id: int = Depends(get_current_user_id)):
+def list_user_files(user_id: int = Depends(require_auth)):
     conn = None
     try:
         conn = get_db_connection()

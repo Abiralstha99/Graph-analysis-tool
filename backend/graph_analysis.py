@@ -85,7 +85,7 @@ def analyze_data_statistics(baseline_df, sample_df, sample_name: str) -> dict:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error analyzing statistics: {str(e)}")
 
-@router.post("/generate_insights")
+@router.post("/ftir/analyze")
 async def generate_graph_insights(
     baseline: UploadFile = File(...),
     sample: UploadFile = File(...),
@@ -283,6 +283,39 @@ The sample shows {"increased absorption" if stats['differences']['mean_diff'] > 
             status_code=500, 
             content={"error": f"Failed to generate insights: {str(e)}"}
         )
+
+
+@router.post("/ftir/deviation")
+async def calculate_ftir_deviation_not_implemented():
+    return JSONResponse(
+        status_code=501,
+        content={"error": "FTIR deviation analysis is not implemented yet"},
+    )
+
+
+@router.post("/ftir/scores")
+async def calculate_ftir_scores_not_implemented():
+    return JSONResponse(
+        status_code=501,
+        content={"error": "FTIR scores analysis is not implemented yet"},
+    )
+
+
+@router.post("/ftir/sessions/save")
+async def save_ftir_session_not_implemented():
+    return JSONResponse(
+        status_code=501,
+        content={"error": "FTIR session save is not implemented yet"},
+    )
+
+
+@router.get("/ftir/sessions/history")
+async def get_ftir_session_history_not_implemented():
+    return JSONResponse(
+        status_code=501,
+        content={"error": "FTIR session history is not implemented yet"},
+    )
+
 
 @router.get("/health")
 async def analysis_health():

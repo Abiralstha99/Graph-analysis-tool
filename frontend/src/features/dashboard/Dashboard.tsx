@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   SimpleGrid,
   VStack,
@@ -24,6 +24,7 @@ import SampleSidebar from '../../components/shared/SampleSidebar';
 import ExportDialog from '../../components/shared/ExportDialog';
 import { ChangePasswordDialog, useAuth } from '../auth';
 import { ParsedCSV, User } from '../../types';
+import { useFTIRAnalysis } from '../analysis';
 
 const Dashboard: React.FC = () => {
   const [baselineParsed, setBaselineParsed] = useState<ParsedCSV | undefined>();
@@ -32,7 +33,6 @@ const Dashboard: React.FC = () => {
   const [sampleFiles, setSampleFiles] = useState<FileList | undefined>();
   const [selectedSample, setSelectedSample] = useState<string | undefined>();
   const [abnormalityWeights, setAbnormalityWeights] = useState<RangeWeight[]>([]);
-  const [sampleScores, setSampleScores] = useState<{ [filename: string]: number }>({});
   const [scoringMethod, setScoringMethod] = useState<'area' | 'rmse' | 'hybrid' | 'pearson'>('hybrid'); // Default to hybrid method
   const { isOpen: isExportOpen, onOpen: onExportOpen, onClose: onExportClose } = useDisclosure();
   const { isOpen: isChangePasswordOpen, onOpen: onChangePasswordOpen, onClose: onChangePasswordClose } = useDisclosure();
@@ -41,6 +41,21 @@ const Dashboard: React.FC = () => {
   
   // Get actual user from AuthContext
   const { user: authUser, logout } = useAuth();
+  const { calculateScores, scoresResults, clearScores } = useFTIRAnalysis();
+  const sampleScores = scoresResults?.scores ?? {};
+
+  useEffect(() => {
+    if (!baselineFile || !sampleFiles || sampleFiles.length === 0) {
+      clearScores();
+      return;
+    }
+    calculateScores({
+      baseline: baselineFile,
+      samples: Array.from(sampleFiles),
+      scoringMethod,
+      zoneWeights: abnormalityWeights,
+    }).catch(() => undefined);
+  }, [baselineFile, sampleFiles, scoringMethod, abnormalityWeights, calculateScores, clearScores]);
 
   // User profile menu handlers
   const handleChangePasswordClick = () => {
@@ -80,11 +95,6 @@ const Dashboard: React.FC = () => {
     if (selectedSample === filename) {
       setSelectedSample(updatedSamples.length > 0 ? updatedSamples[0].filename : undefined);
     }
-
-    // Clean up the score for the removed sample
-    const updatedScores = { ...sampleScores };
-    delete updatedScores[filename];
-    setSampleScores(updatedScores);
 
     // Update FileList for backend compatibility
     if (sampleFiles) {
@@ -146,8 +156,6 @@ const Dashboard: React.FC = () => {
               onFilesParsed={(files, raw) => {
                 setBaselineParsed(files[0]);
                 setBaselineFile(raw[0]);
-                // Clear scores when baseline changes - they will be recalculated
-                setSampleScores({});
               }}
             />
             <FileUploadBox
@@ -156,8 +164,6 @@ const Dashboard: React.FC = () => {
               onFilesParsed={(files: ParsedCSV[], raw: FileList) => {
                 setSampleParsed(files);
                 setSampleFiles(raw);
-                // Clear old scores - they will be recalculated by GraphPreview
-                setSampleScores({});
                 // Update selected sample: keep current if still exists, otherwise pick first available
                 if (files.length === 0) {
                   setSelectedSample(undefined);
@@ -267,11 +273,8 @@ const Dashboard: React.FC = () => {
             samples={sampleParsed}
             selectedSampleName={selectedSample}
             onSelectSample={setSelectedSample}
-            baselineFile={baselineFile}
-            sampleFiles={sampleFiles}
             abnormalityWeights={abnormalityWeights}
-            onScoreUpdate={setSampleScores}
-            scoringMethod={scoringMethod}
+            deviationData={scoresResults?.deviationData}
           />
         </VStack>
       </Box>

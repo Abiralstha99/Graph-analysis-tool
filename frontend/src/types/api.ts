@@ -84,6 +84,7 @@ export interface DeviationResponse {
 export interface ScoresResponse {
   success: boolean;
   scores: { [filename: string]: number };
+  deviationData: DeviationData;
   summary: {
     totalSamples: number;
     good: number;

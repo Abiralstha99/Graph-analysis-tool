@@ -6,12 +6,8 @@ from typing import List
 import os
 import zipfile
 import tempfile
-import shutil
-import secrets
-import bcrypt
-from mysql.connector import IntegrityError
 
-from .config import Settings
+from .auth import configure_session_middleware, get_current_user_id, router as auth_router
 from .database import get_db_connection
 from .utils.plotter import generate_and_save, SAVE_DIR
 from .graph_analysis import router as analysis_router
@@ -22,6 +18,7 @@ from .middleware.auth import require_auth
 app = FastAPI(title="MRG Labs Graphing API")
 
 # Include routers for new services
+app.include_router(auth_router)
 app.include_router(analysis_router)
 app.include_router(chat_router)
 
@@ -36,10 +33,7 @@ app.add_middleware(
 )
 
 # Session middleware for simple server-side sessions
-from starlette.middleware.sessions import SessionMiddleware
-
-SESSION_SECRET = Settings.from_environment().session_secret or secrets.token_urlsafe(32)
-app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
+configure_session_middleware(app)
 
 # Static mounting for generated graphs
 static_root = os.path.join(os.path.dirname(__file__), 'static')
@@ -93,6 +87,13 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
     except Exception:
         return False
+
+
+async def get_current_user_id(request: Request) -> int:
+    user_id = request.session.get('user_id')
+    if user_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Not authenticated')
+    return int(user_id)
 
 
 from pydantic import BaseModel
@@ -169,7 +170,7 @@ class ChangePasswordPayload(BaseModel):
 
 
 @app.post('/change_password')
-def change_password(payload: ChangePasswordPayload, user_id: int = Depends(require_auth)):
+def change_password(payload: ChangePasswordPayload, user_id: int = Depends(get_current_user_id)):
     current_password = payload.current_password
     new_password = payload.new_password
     
@@ -241,7 +242,7 @@ def change_password(payload: ChangePasswordPayload, user_id: int = Depends(requi
 #                     conn.close()
 #             except Exception:
 #                 pass
-        
+#         
 #         # Create a temporary zip file
 #         with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as temp_zip:
 #             with zipfile.ZipFile(temp_zip.name, 'w', zipfile.ZIP_DEFLATED) as zip_file:
@@ -251,18 +252,18 @@ def change_password(payload: ChangePasswordPayload, user_id: int = Depends(requi
 #                         file_path = os.path.join(SAVE_DIR, relative_path.replace('/static/generated_graphs/', ''))
 #                     else:
 #                         file_path = os.path.join(SAVE_DIR, os.path.basename(relative_path))
-                    
+#                     
 #                     if os.path.exists(file_path):
 #                         # Add file to zip with just the filename (no directories)
 #                         zip_file.write(file_path, os.path.basename(file_path))
-            
+#             
 #             # Return the zip file as a download
 #             def cleanup_file():
 #                 try:
 #                     os.unlink(temp_zip.name)
 #                 except:
 #                     pass
-            
+#             
 #             return FileResponse(
 #                 path=temp_zip.name,
 #                 filename=f"exported_graphs.zip",

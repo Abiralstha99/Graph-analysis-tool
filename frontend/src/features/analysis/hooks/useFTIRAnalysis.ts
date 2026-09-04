@@ -35,11 +35,13 @@ export const useFTIRAnalysis = () => {
   // Results state
   const [analysisResults, setAnalysisResults] = useState<AnalysisResponse | null>(null);
   const [deviationResults, setDeviationResults] = useState<DeviationResponse | null>(null);
+  const [scoresResults, setScoresResults] = useState<ScoresResponse | null>(null);
   const [configurations, setConfigurations] = useState<AnalysisConfiguration[]>([]);
   const [sessionHistory, setSessionHistory] = useState<AnalysisSession[]>([]);
 
   // Abort controller for cancelling requests
   const abortControllerRef = useRef<AbortController | null>(null);
+  const scoresRequestIdRef = useRef(0);
 
   // Helper to set loading state for specific operation
   const setLoadingState = useCallback((operation: keyof LoadingStates, state: LoadingState) => {
@@ -58,7 +60,13 @@ export const useFTIRAnalysis = () => {
   const clearResults = useCallback(() => {
     setAnalysisResults(null);
     setDeviationResults(null);
+    setScoresResults(null);
     setError(null);
+  }, []);
+
+  const clearScores = useCallback(() => {
+    scoresRequestIdRef.current += 1;
+    setScoresResults(null);
   }, []);
 
   // Cancel current operation
@@ -150,20 +158,26 @@ export const useFTIRAnalysis = () => {
 
   // Calculate scores only (faster for batch processing)
   const calculateScores = useCallback(async (request: ScoresRequest) => {
+    const requestId = ++scoresRequestIdRef.current;
     try {
       setLoadingState('analysis', 'loading');
+      setScoresResults(null);
       setProgress('analysis', { stage: 'calculating', progress: 50 });
       clearError();
 
       const response = await FTIRApiService.calculateScores(request);
+      if (requestId !== scoresRequestIdRef.current) return response;
+      setScoresResults(response);
       setLoadingState('analysis', 'success');
       setProgress('analysis', { stage: 'complete', progress: 100 });
       
       return response;
     } catch (err: any) {
+      if (requestId !== scoresRequestIdRef.current) throw err;
       const errorMessage = err.response?.data?.error || err.message || 'Score calculation failed';
       setError(errorMessage);
       setLoadingState('analysis', 'error');
+      setScoresResults(null);
       throw err;
     }
   }, [setLoadingState, setProgress, clearError]);
@@ -281,6 +295,7 @@ export const useFTIRAnalysis = () => {
     error,
     analysisResults,
     deviationResults,
+    scoresResults,
     configurations,
     sessionHistory,
 
@@ -297,6 +312,7 @@ export const useFTIRAnalysis = () => {
     // Utility
     clearError,
     clearResults,
+    clearScores,
     cancelOperation,
   };
 };

@@ -33,7 +33,7 @@ export class FTIRApiService {
       formData.append('sample', sample);
       formData.append('sample_name', sample.name);
 
-      const response = await api.post('/analysis/generate_insights', formData, {
+      const response = await api.post('/analysis/ftir/analyze', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 

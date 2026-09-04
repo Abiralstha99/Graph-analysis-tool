@@ -6,9 +6,12 @@ import io
 import tempfile
 import json
 import traceback
+import json
+import time
 
 from .config import Settings
 from .services.graph_statistics import summarize_series
+from .services.analysis_service import AnalysisService
 
 try:
     import google.generativeai as genai
@@ -85,7 +88,7 @@ def analyze_data_statistics(baseline_df, sample_df, sample_name: str) -> dict:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error analyzing statistics: {str(e)}")
 
-@router.post("/generate_insights")
+@router.post("/ftir/analyze")
 async def generate_graph_insights(
     baseline: UploadFile = File(...),
     sample: UploadFile = File(...),
@@ -283,6 +286,93 @@ The sample shows {"increased absorption" if stats['differences']['mean_diff'] > 
             status_code=500, 
             content={"error": f"Failed to generate insights: {str(e)}"}
         )
+
+
+def _parse_zone_weights(value: Optional[str]) -> list[dict] | None:
+    if not value:
+        return None
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError("zone_weights must be valid JSON") from exc
+    if not isinstance(parsed, list):
+        raise ValueError("zone_weights must be a JSON array")
+    return parsed
+
+
+async def _read_upload(upload: UploadFile) -> bytes:
+    return await upload.read()
+
+
+@router.post("/ftir/deviation")
+async def calculate_ftir_deviation(
+    baseline: UploadFile = File(...),
+    sample: UploadFile = File(...),
+    zone_weights: Optional[str] = Form(None),
+):
+    started = time.perf_counter()
+    try:
+        weights = _parse_zone_weights(zone_weights)
+        baseline_bytes, sample_bytes = await _read_upload(baseline), await _read_upload(sample)
+        result = AnalysisService().calculate(
+            baseline_bytes, baseline.filename or "baseline", [(sample_bytes, sample.filename or "sample")],
+            zone_weights=weights,
+        )
+        sample_x, _ = AnalysisService._parse(sample_bytes, sample.filename or "sample")
+        return {
+            "success": True,
+            "deviationData": result["deviationData"],
+            "sampleInfo": {
+                "filename": sample.filename,
+                "dataPoints": len(sample_x),
+                "wavelengthRange": [float(sample_x.min()), float(sample_x.max())],
+            },
+            "processingTime": (time.perf_counter() - started) * 1000,
+        }
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"error": {"code": "VALIDATION_ERROR", "message": str(exc), "details": {}}})
+
+
+@router.post("/ftir/scores")
+async def calculate_ftir_scores(
+    baseline: UploadFile = File(...),
+    samples: List[UploadFile] = File(...),
+    scoring_method: str = Form("hybrid"),
+    zone_weights: Optional[str] = Form(None),
+):
+    started = time.perf_counter()
+    try:
+        weights = _parse_zone_weights(zone_weights)
+        baseline_bytes = await _read_upload(baseline)
+        sample_bytes = [(await _read_upload(sample), sample.filename or "sample") for sample in samples]
+        result = AnalysisService().calculate(
+            baseline_bytes, baseline.filename or "baseline", sample_bytes,
+            scoring_method=scoring_method, zone_weights=weights,
+        )
+        return {
+            "success": True,
+            **result,
+            "processingTime": (time.perf_counter() - started) * 1000,
+        }
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"error": {"code": "VALIDATION_ERROR", "message": str(exc), "details": {}}})
+
+
+@router.post("/ftir/sessions/save")
+async def save_ftir_session_not_implemented():
+    return JSONResponse(
+        status_code=501,
+        content={"error": "FTIR session save is not implemented yet"},
+    )
+
+
+@router.get("/ftir/sessions/history")
+async def get_ftir_session_history_not_implemented():
+    return JSONResponse(
+        status_code=501,
+        content={"error": "FTIR session history is not implemented yet"},
+    )
+
 
 @router.get("/health")
 async def analysis_health():

@@ -2,9 +2,9 @@ import React, { useRef, useMemo } from 'react';
 import { Box, VStack, Text, HStack, Button, Icon, useColorModeValue, useColorMode } from '@chakra-ui/react';
 import { ViewIcon, ViewOffIcon, RepeatIcon } from '@chakra-ui/icons';
 import type { ParsedCSV, RangeWeight } from '../../../types';
+import type { DeviationData } from '../../../types/api';
 import DeviationHeatBar from '../../../components/shared/DeviationHeatBar';
 import { Line } from 'react-chartjs-2';
-import { type Series, diff } from '../../analysis';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -33,11 +33,8 @@ interface Props {
   samples: ParsedCSV[];
   selectedSampleName?: string;
   onSelectSample: (name: string) => void;
-  baselineFile?: File;
-  sampleFiles?: FileList;
   abnormalityWeights?: RangeWeight[];
-  onScoreUpdate?: (scores: { [filename: string]: number }) => void;
-  scoringMethod?: 'area' | 'rmse' | 'hybrid' | 'pearson';
+  deviationData?: DeviationData;
 }
 
 const GraphPreview: React.FC<Props> = ({ 
@@ -45,11 +42,8 @@ const GraphPreview: React.FC<Props> = ({
   samples, 
   selectedSampleName, 
   onSelectSample, 
-  baselineFile, 
-  sampleFiles,
   abnormalityWeights = [],
-  onScoreUpdate,
-  scoringMethod = 'hybrid'
+  deviationData,
 }) => {
   const chartRef = useRef<any>(null);
   const differenceChartRef = useRef<any>(null);
@@ -67,357 +61,11 @@ const GraphPreview: React.FC<Props> = ({
   // Track grid visibility (synchronized across both graphs)
   const [showGrid, setShowGrid] = React.useState(true);
 
-  // Function to get weight for a given wavelength
-  const getWeightForWavelength = (wavelength: number): number => {
-    if (!abnormalityWeights || abnormalityWeights.length === 0) {
-      return 1.0; // Default weight when no weights are configured
-    }
+  const differenceData = deviationData;
 
-    for (const range of abnormalityWeights) {
-      if (wavelength >= range.min && wavelength <= range.max) {
-        return range.weight / 100; // Convert percentage to decimal
-      }
-    }
-    return 1.0; // Default weight if wavelength doesn't fall in any range
-  };
-
-  // Step 2: Calculate differences and average across all samples
-  const differenceData = useMemo(() => {
-    if (!baseline || samples.length === 0) return null;
-
-    // Convert baseline to Series format
-    const baselineSeries: Series = { x: baseline.x, y: baseline.y };
-
-    // Calculate individual differences for each sample vs baseline
-    const sampleDifferences = samples.map(s => {
-      const sampleSeries: Series = { x: s.x, y: s.y };
-      return diff(baselineSeries, sampleSeries);
-    });
-
-    // Calculate average difference across all samples at each x-point
-    // First, find common x-values across all samples
-    if (sampleDifferences.length === 0) return null;
-
-    const firstDiff = sampleDifferences[0];
-    const x = firstDiff.x;
-    const avgDelta: number[] = [];
-
-    // For each x-point, average the deltas across all samples
-    for (let i = 0; i < x.length; i++) {
-      const xValue = x[i];
-      let sum = 0;
-      let count = 0;
-
-      // Sum deltas from all samples at this x-point
-      for (const sampleDiff of sampleDifferences) {
-        const idx = sampleDiff.x.indexOf(xValue);
-        if (idx !== -1) {
-          sum += sampleDiff.y[idx];
-          count++;
-        }
-      }
-
-      avgDelta.push(count > 0 ? sum / count : 0);
-    }
-
-    // Calculate deviation from average for selected sample
-    // Find the index of the selected sample
-    const selectedSampleIndex = selectedSampleName 
-      ? samples.findIndex(s => s.filename === selectedSampleName)
-      : 0;
-    const selectedSampleDiff = sampleDifferences[selectedSampleIndex >= 0 ? selectedSampleIndex : 0];
-    const selectedSample = samples[selectedSampleIndex >= 0 ? selectedSampleIndex : 0];
-
-    const deviation: number[] = [];
-
-    for (let i = 0; i < x.length; i++) {
-      const xValue = x[i];
-      const idx = selectedSampleDiff.x.indexOf(xValue);
-      if (idx !== -1) {
-        let baseDeviation = 0;
-        
-        // Calculate deviation based on scoring method
-        if (scoringMethod === 'rmse') {
-          // For RMSE: use squared error (will be sqrt'd in visualization)
-          baseDeviation = selectedSampleDiff.y[idx] * selectedSampleDiff.y[idx];
-        } else if (scoringMethod === 'hybrid') {
-          // For Hybrid: show absolute difference from baseline (deviation magnitude)
-          baseDeviation = Math.abs(selectedSampleDiff.y[idx]);
-        } else if (scoringMethod === 'pearson') {
-          // For Pure Pearson: show absolute difference from baseline (deviation magnitude)
-          baseDeviation = Math.abs(selectedSampleDiff.y[idx]);
-        } else if (scoringMethod === 'area') {
-          // For Area: show absolute difference from baseline (same as actual score calculation)
-          baseDeviation = Math.abs(selectedSampleDiff.y[idx]);
-        }
-        
-        // Apply abnormality weight for this wavelength
-        const weight = getWeightForWavelength(xValue);
-        const weightedDeviation = baseDeviation * weight;
-        
-        deviation.push(weightedDeviation);
-      } else {
-        deviation.push(0);
-      }
-    }
-
-    return {
-      x,
-      avgDelta,
-      selectedDelta: selectedSampleDiff.y,
-      deviation,
-      allSampleDifferences: sampleDifferences
-    };
-  }, [baseline, samples, selectedSampleName, abnormalityWeights, scoringMethod]);
-
-  // Calculate anomaly scores for all samples (0-100, higher is better)
-  const sampleScores = useMemo(() => {
-    if (!baseline || samples.length === 0 || !differenceData) return {};
-
-    const scores: { [filename: string]: number } = {};
-
-    // Convert baseline to Series format
-    const baselineSeries: Series = { x: baseline.x, y: baseline.y };
-
-    // Calculate score for each sample based on the selected scoring method
-    samples.forEach(sample => {
-      const sampleSeries: Series = { x: sample.x, y: sample.y };
-
-      const sampleDiff = diff(baselineSeries, sampleSeries);
-      const { x: diffX, y: delta } = sampleDiff;
-
-      let score = 0;
-
-      if (scoringMethod === 'rmse') {
-        // Method 1: RMSE Deviation Weighted by Interval
-        let sumWeightedSquaredError = 0;
-        let sumWeights = 0;
-
-        for (let i = 0; i < diffX.length; i++) {
-          const wavelength = diffX[i];
-          const deviation = delta[i]; // Keep signed value for RMSE
-          const weight = getWeightForWavelength(wavelength);
-          
-          sumWeightedSquaredError += weight * (deviation * deviation);
-          sumWeights += weight;
-        }
-
-        const weightedRMSE = sumWeights > 0 ? Math.sqrt(sumWeightedSquaredError / sumWeights) : 0;
-        
-        // Convert RMSE to score (0-100, lower RMSE = higher score)
-        // Adjusted thresholds: 0-0.10 (excellent), 0.10-0.25 (good), 0.25-0.5 (fair), >0.5 (poor)
-        if (weightedRMSE <= 0.10) {
-          score = 90 + (10 * (1 - weightedRMSE / 0.10)); // 90-100 for excellent
-        } else if (weightedRMSE <= 0.25) {
-          score = 70 + (20 * (1 - (weightedRMSE - 0.10) / 0.15)); // 70-90 for good
-        } else if (weightedRMSE <= 0.5) {
-          score = 40 + (30 * (1 - (weightedRMSE - 0.25) / 0.25)); // 40-70 for fair
-        } else {
-          score = Math.max(0, 40 * Math.exp(-(weightedRMSE - 0.5) / 0.3)); // 0-40 for poor
-        }
-
-      } else if (scoringMethod === 'hybrid') {
-        // Method 2: Hybrid Score (Weighted RMSE + Pearson Penalty)
-        // SCIENTIFICALLY CORRECT APPROACH FOR FTIR GREASE ANALYSIS
-        
-        // Step 1: Calculate Weighted RMSE (primary metric for chemical changes)
-        let sumWeightedSquaredError = 0;
-        let sumWeights = 0;
-
-        for (let i = 0; i < diffX.length; i++) {
-          const wavelength = diffX[i];
-          const deviation = delta[i];
-          const weight = getWeightForWavelength(wavelength);
-          
-          sumWeightedSquaredError += weight * (deviation * deviation);
-          sumWeights += weight;
-        }
-
-        const weightedRMSE = sumWeights > 0 ? Math.sqrt(sumWeightedSquaredError / sumWeights) : 0;
-        
-        // Step 2: Calculate Pearson correlation (shape mismatch penalty only)
-        let sumWeightedX = 0;
-        let sumWeightedY = 0;
-        let sumWeightedXY = 0;
-        let sumWeightedX2 = 0;
-        let sumWeightedY2 = 0;
-
-        for (let i = 0; i < diffX.length; i++) {
-          const wavelength = diffX[i];
-          const weight = getWeightForWavelength(wavelength);
-          
-          const baselineIdx = baseline.x.indexOf(wavelength);
-          const sampleIdx = sample.x.indexOf(wavelength);
-          
-          if (baselineIdx !== -1 && sampleIdx !== -1) {
-            const baselineY = baseline.y[baselineIdx];
-            const sampleY = sample.y[sampleIdx];
-            
-            sumWeightedX += weight * baselineY;
-            sumWeightedY += weight * sampleY;
-            sumWeightedXY += weight * baselineY * sampleY;
-            sumWeightedX2 += weight * baselineY * baselineY;
-            sumWeightedY2 += weight * sampleY * sampleY;
-          }
-        }
-
-        let correlation = 0;
-        if (sumWeights > 0) {
-          const meanX = sumWeightedX / sumWeights;
-          const meanY = sumWeightedY / sumWeights;
-          const meanXY = sumWeightedXY / sumWeights;
-          const meanX2 = sumWeightedX2 / sumWeights;
-          const meanY2 = sumWeightedY2 / sumWeights;
-          
-          const covariance = meanXY - (meanX * meanY);
-          const stdX = Math.sqrt(Math.abs(meanX2 - (meanX * meanX)));
-          const stdY = Math.sqrt(Math.abs(meanY2 - (meanY * meanY)));
-          
-          if (stdX > 0 && stdY > 0) {
-            correlation = covariance / (stdX * stdY);
-            correlation = Math.max(-1, Math.min(1, correlation));
-          }
-        }
-
-        // Step 3: Calculate base score from RMSE (85% weight)
-        let baseScore = 0;
-        if (weightedRMSE <= 0.10) {
-          baseScore = 90 + (10 * (1 - weightedRMSE / 0.10));
-        } else if (weightedRMSE <= 0.25) {
-          baseScore = 70 + (20 * (1 - (weightedRMSE - 0.10) / 0.15));
-        } else if (weightedRMSE <= 0.5) {
-          baseScore = 40 + (30 * (1 - (weightedRMSE - 0.25) / 0.25));
-        } else {
-          baseScore = Math.max(0, 40 * Math.exp(-(weightedRMSE - 0.5) / 0.3));
-        }
-
-        // Step 4: Calculate Pearson penalty (15% weight, only penalizes shape mismatch)
-        // Correlation < 0.90 indicates structural/shape problems beyond just intensity
-        let pearsonPenalty = 0;
-        if (correlation < 0.90) {
-          // Maximum 15 point penalty for severe shape mismatch
-          pearsonPenalty = 15 * (0.90 - correlation) / 0.90;
-        } else if (correlation < 0.95) {
-          // Small penalty (0-7.5 points) for minor shape issues
-          pearsonPenalty = 7.5 * (0.95 - correlation) / 0.05;
-        }
-        // If correlation >= 0.95, no penalty (shape is good)
-
-        // Step 5: Combined score = RMSE-based score - Pearson penalty
-        score = Math.max(0, Math.min(100, baseScore - pearsonPenalty));
-
-      } else if (scoringMethod === 'pearson') {
-        // Method 3: Pure Pearson Correlation (for comparison/research purposes)
-        // WARNING: This method alone is NOT scientifically sound for FTIR grease oxidation analysis
-        // It only measures shape similarity, not chemical changes or oxidation severity
-        
-        let sumWeightedX = 0;
-        let sumWeightedY = 0;
-        let sumWeightedXY = 0;
-        let sumWeightedX2 = 0;
-        let sumWeightedY2 = 0;
-        let sumWeights = 0;
-
-        for (let i = 0; i < diffX.length; i++) {
-          const wavelength = diffX[i];
-          const weight = getWeightForWavelength(wavelength);
-          
-          const baselineIdx = baseline.x.indexOf(wavelength);
-          const sampleIdx = sample.x.indexOf(wavelength);
-          
-          if (baselineIdx !== -1 && sampleIdx !== -1) {
-            const baselineY = baseline.y[baselineIdx];
-            const sampleY = sample.y[sampleIdx];
-            
-            sumWeightedX += weight * baselineY;
-            sumWeightedY += weight * sampleY;
-            sumWeightedXY += weight * baselineY * sampleY;
-            sumWeightedX2 += weight * baselineY * baselineY;
-            sumWeightedY2 += weight * sampleY * sampleY;
-            sumWeights += weight;
-          }
-        }
-
-        let correlation = 0;
-        if (sumWeights > 0) {
-          const meanX = sumWeightedX / sumWeights;
-          const meanY = sumWeightedY / sumWeights;
-          const meanXY = sumWeightedXY / sumWeights;
-          const meanX2 = sumWeightedX2 / sumWeights;
-          const meanY2 = sumWeightedY2 / sumWeights;
-          
-          const covariance = meanXY - (meanX * meanY);
-          const stdX = Math.sqrt(Math.abs(meanX2 - (meanX * meanX)));
-          const stdY = Math.sqrt(Math.abs(meanY2 - (meanY * meanY)));
-          
-          if (stdX > 0 && stdY > 0) {
-            correlation = covariance / (stdX * stdY);
-            correlation = Math.max(-1, Math.min(1, correlation));
-          }
-        }
-
-        // Map correlation to score (0-100 scale)
-        // r = 1.0 → 100, r = 0.95 → 95, r = 0.9 → 90, etc.
-        // Note: This assumes higher correlation = better, which is problematic for detecting chemical changes
-        score = Math.max(0, Math.min(100, correlation * 100));
-
-      } else if (scoringMethod === 'area') {
-        // Method 3: Area Difference / Integral Difference (default)
-        // Calculate total weighted area difference using trapezoidal rule
-        let totalWeightedAreaDiff = 0;
-
-        for (let i = 0; i < diffX.length - 1; i++) {
-          const wavelength1 = diffX[i];
-          const wavelength2 = diffX[i + 1];
-          const weight = (getWeightForWavelength(wavelength1) + getWeightForWavelength(wavelength2)) / 2;
-          
-          // Trapezoidal rule for area under the difference curve
-          const dx = Math.abs(wavelength2 - wavelength1);
-          const avgAbsDelta = (Math.abs(delta[i]) + Math.abs(delta[i + 1])) / 2;
-          const areaDiff = dx * avgAbsDelta;
-          
-          totalWeightedAreaDiff += weight * areaDiff;
-        }
-
-        // The totalWeightedAreaDiff is the actual integrated difference
-        // Typical values range from 0-50 (excellent), 50-200 (good), 200-500 (fair), >500 (poor)
-        const areaDiff = totalWeightedAreaDiff;
-        
-        // Convert to score (0-100, lower area diff = higher score)
-        if (areaDiff <= 50) {
-          score = 90 + (10 * (1 - areaDiff / 50)); // 90-100 for excellent
-        } else if (areaDiff <= 200) {
-          score = 70 + (20 * (1 - (areaDiff - 50) / 150)); // 70-90 for good
-        } else if (areaDiff <= 500) {
-          score = 40 + (30 * (1 - (areaDiff - 200) / 300)); // 40-70 for fair
-        } else {
-          score = Math.max(0, 40 * Math.exp(-(areaDiff - 500) / 300)); // 0-40 for poor
-        }
-      }
-
-      scores[sample.filename] = Math.round(score);
-    });
-
-    return scores;
-  }, [baseline, samples, abnormalityWeights, differenceData, scoringMethod]);
-
-  // Update parent component with scores when they change
-  React.useEffect(() => {
-    if (onScoreUpdate) {
-      onScoreUpdate(sampleScores);
-    }
-  }, [sampleScores, onScoreUpdate]);
-
-  // Find the corresponding File object for the selected sample
-  const selectedSampleFile = sampleFiles && selectedSampleName ? 
-    Array.from(sampleFiles).find(file => file.name === selectedSampleName) : 
-    undefined;
+  /* Server-authoritative scoring: this component only renders the returned deviation data. */
 
   const handleResetZoom = () => {
-    // Reset main graph
-    if (chartRef.current) {
-      chartRef.current.resetZoom();
-    }
     // Reset difference graph
     if (differenceChartRef.current) {
       differenceChartRef.current.resetZoom();

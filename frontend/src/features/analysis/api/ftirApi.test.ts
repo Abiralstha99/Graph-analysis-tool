@@ -13,7 +13,7 @@ describe('FTIRApiService.analyzeSamples', () => {
     vi.mocked(api.post).mockReset();
   });
 
-  it('uses the backend generate_insights contract for every sample', async () => {
+  it('uses the backend FTIR analyze contract for every sample', async () => {
     vi.mocked(api.post)
       .mockResolvedValueOnce({
         data: {
@@ -47,12 +47,12 @@ describe('FTIRApiService.analyzeSamples', () => {
 
     expect(api.post).toHaveBeenCalledTimes(2);
     expect(vi.mocked(api.post).mock.calls.map(([url]) => url)).toEqual([
-      '/analysis/generate_insights',
-      '/analysis/generate_insights',
+      '/analysis/ftir/analyze',
+      '/analysis/ftir/analyze',
     ]);
 
     for (const [url, formData, config] of vi.mocked(api.post).mock.calls) {
-      expect(url).toBe('/analysis/generate_insights');
+      expect(url).toBe('/analysis/ftir/analyze');
       expect(formData).toBeInstanceOf(FormData);
       expect((formData as FormData).get('baseline')).toBe(baseline);
       expect((formData as FormData).get('sample')).toBeInstanceOf(File);

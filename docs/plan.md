@@ -292,6 +292,34 @@ Port the scoring logic from
 using `numpy`. All three methods (RMSE, Pearson, area) plus the hybrid
 combination are pure math with no DOM dependencies.
 
+#### Required analysis data flow
+
+The backend is the authoritative owner of all graph calculations. The
+frontend sends the baseline and sample data, receives the calculated results,
+and only renders the graph and scores.
+
+```text
+Frontend
+  ↓
+send baseline + sample(s)
+  ↓
+Backend
+  ├─ calculate deviation
+  ├─ calculate weighted deviation
+  ├─ calculate RMSE
+  ├─ calculate Pearson
+  ├─ calculate area difference
+  └─ calculate hybrid score
+  ↓
+return results
+  ↓
+Frontend renders graph + scores
+```
+
+The frontend must not calculate authoritative deviation data or scores. Any
+client-side calculations used for interaction or preview must not replace the
+backend response or be persisted as analysis results.
+
 #### 4. Write `routers/analyses.py`
 
 Wire the four CRUD endpoints. Every route must:

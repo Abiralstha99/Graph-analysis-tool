@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from mysql.connector import IntegrityError
 
 from ..database import get_db_connection
-from .dependencies import get_current_user_id
+from ..middleware.auth import require_auth
 from .passwords import hash_password, verify_password
 from .schemas import ChangePasswordPayload, UserAuth
 
@@ -96,7 +96,7 @@ def logout(request: Request):
 @router.post("/change_password")
 def change_password(
     payload: ChangePasswordPayload,
-    user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(require_auth),
 ):
     current_password = payload.current_password
     new_password = payload.new_password

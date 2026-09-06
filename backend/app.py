@@ -7,7 +7,7 @@ import os
 import zipfile
 import tempfile
 
-from .auth import configure_session_middleware, get_current_user_id, router as auth_router
+from .auth import configure_session_middleware, router as auth_router
 from .database import get_db_connection
 from .utils.plotter import generate_and_save, SAVE_DIR
 from .graph_analysis import router as analysis_router

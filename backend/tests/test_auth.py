@@ -31,4 +31,8 @@ async def test_require_auth_raises_canonical_unauthorized_error():
         await require_auth(make_request({}))
 
     assert raised.value.status_code == 401
-    assert raised.value.detail == "UNAUTHORIZED:Not authenticated"
+    assert raised.value.detail == {
+        "code": "UNAUTHORIZED",
+        "message": "Not authenticated",
+        "details": {},
+    }

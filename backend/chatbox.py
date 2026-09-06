@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from typing import List, Optional
 from datetime import datetime
 import json
 
 from .config import Settings
+from .middleware.auth import require_auth
 from .schemas.chat import ChatMessage, ChatRequest, ChatResponse
 
 try:
@@ -139,7 +140,7 @@ def _build_fallback_from_context(message: str, context: Optional[str]) -> str:
 
 
 @router.post("/send_message", response_model=ChatResponse)
-async def send_chat_message(request: ChatRequest):
+async def send_chat_message(request: ChatRequest, user_id: int = Depends(require_auth)):
     """Send a message to the AI chatbot and get a response."""
     if not GENAI_AVAILABLE:
         raise HTTPException(
@@ -236,7 +237,7 @@ async def send_chat_message(request: ChatRequest):
 
 
 @router.get("/conversation/{conversation_id}")
-async def get_conversation(conversation_id: str):
+async def get_conversation(conversation_id: str, user_id: int = Depends(require_auth)):
     """Retrieve a conversation history by ID."""
     if conversation_id not in conversation_sessions:
         raise HTTPException(
@@ -252,7 +253,7 @@ async def get_conversation(conversation_id: str):
 
 
 @router.delete("/conversation/{conversation_id}")
-async def clear_conversation(conversation_id: str):
+async def clear_conversation(conversation_id: str, user_id: int = Depends(require_auth)):
     """Clear a conversation history."""
     if conversation_id in conversation_sessions:
         del conversation_sessions[conversation_id]
@@ -265,7 +266,7 @@ async def clear_conversation(conversation_id: str):
 
 
 @router.post("/quick_question")
-async def ask_quick_question(request: dict):
+async def ask_quick_question(request: dict, user_id: int = Depends(require_auth)):
     """Ask a quick question without maintaining conversation history."""
     if not GENAI_AVAILABLE:
         raise HTTPException(

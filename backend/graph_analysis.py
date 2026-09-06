@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form, status
 from fastapi.responses import JSONResponse
 from typing import List, Optional
 import base64
@@ -7,6 +7,7 @@ import json
 import time
 
 from .config import Settings
+from .middleware.auth import require_auth
 from .services.graph_statistics import summarize_series
 from .services.analysis_service import AnalysisService
 
@@ -98,7 +99,8 @@ def analyze_data_statistics(baseline_df, sample_df, sample_name: str) -> dict:
 async def generate_graph_insights(
     baseline: UploadFile = File(...),
     sample: UploadFile = File(...),
-    sample_name: Optional[str] = Form(None)
+    sample_name: Optional[str] = Form(None),
+    user_id: int = Depends(require_auth),
 ):
     """
     Generate AI-powered insights and analysis for a graph comparison between baseline and sample data.
@@ -267,6 +269,7 @@ async def calculate_ftir_deviation(
     baseline: UploadFile = File(...),
     sample: UploadFile = File(...),
     zone_weights: Optional[str] = Form(None),
+    user_id: int = Depends(require_auth),
 ):
     started = time.perf_counter()
     try:
@@ -303,6 +306,7 @@ async def calculate_ftir_scores(
     samples: List[UploadFile] = File(...),
     scoring_method: str = Form("hybrid"),
     zone_weights: Optional[str] = Form(None),
+    user_id: int = Depends(require_auth),
 ):
     started = time.perf_counter()
     try:
@@ -326,7 +330,7 @@ async def calculate_ftir_scores(
 
 
 @router.post("/ftir/sessions/save")
-async def save_ftir_session_not_implemented():
+async def save_ftir_session_not_implemented(user_id: int = Depends(require_auth)):
     return JSONResponse(
         status_code=501,
         content={"error": "FTIR session save is not implemented yet"},
@@ -334,7 +338,7 @@ async def save_ftir_session_not_implemented():
 
 
 @router.get("/ftir/sessions/history")
-async def get_ftir_session_history_not_implemented():
+async def get_ftir_session_history_not_implemented(user_id: int = Depends(require_auth)):
     return JSONResponse(
         status_code=501,
         content={"error": "FTIR session history is not implemented yet"},

@@ -1,5 +1,7 @@
 """Tests for services/job_service.py, backed by an in-memory fake DB."""
 
+from unittest.mock import patch
+
 import pytest
 from fastapi import HTTPException
 
@@ -110,6 +112,17 @@ class FailingAnalysisService:
         raise self._error
 
 
+class FlakyService:
+    def __init__(self):
+        self.n = 0
+
+    def run(self, *args, **kwargs):
+        self.n += 1
+        if self.n < 3:
+            raise RuntimeError("transient")
+        return None
+
+
 def test_create_job_inserts_queued_row():
     db = FakeDB()
 
@@ -206,7 +219,8 @@ def test_run_job_marks_job_failed_on_analysis_error():
         AnalysisError("CSV must have two numeric columns")
     )
 
-    run_job(job_id, analysis_service, db, b"a", "b.csv", [(b"s", "s.csv")])
+    with patch("backend.services.job_service.time.sleep") as slept:
+        run_job(job_id, analysis_service, db, b"a", "b.csv", [(b"s", "s.csv")])
 
     job = get_job(job_id, 1, db)
     assert job["status"] == "failed"
@@ -215,6 +229,7 @@ def test_run_job_marks_job_failed_on_analysis_error():
     assert db.analyses[ANALYSIS_ID]["error_message"] == (
         "CSV must have two numeric columns"
     )
+    assert slept.call_count == 0
 
 
 def test_run_job_marks_job_failed_without_internal_error_text():
@@ -223,7 +238,8 @@ def test_run_job_marks_job_failed_without_internal_error_text():
     secret = "password=hunter2 connection=mysql://"
     analysis_service = FailingAnalysisService(RuntimeError(secret))
 
-    run_job(job_id, analysis_service, db, b"a", "b.csv", [(b"s", "s.csv")])
+    with patch("backend.services.job_service.time.sleep") as slept:
+        run_job(job_id, analysis_service, db, b"a", "b.csv", [(b"s", "s.csv")])
 
     job = get_job(job_id, 1, db)
     assert job["status"] == "failed"
@@ -234,3 +250,35 @@ def test_run_job_marks_job_failed_without_internal_error_text():
     assert db.analyses[ANALYSIS_ID]["error_message"] == "Analysis failed"
     assert secret not in str(db.jobs[job_id])
     assert secret not in str(db.analyses[ANALYSIS_ID])
+    assert slept.call_count == 2
+
+
+def test_run_job_retries_transient_errors_then_completes():
+    db = FakeDB()
+    job_id = create_job(ANALYSIS_ID, 1, db)
+    analysis_service = FlakyService()
+
+    with patch("backend.services.job_service.time.sleep") as slept:
+        run_job(job_id, analysis_service, db, b"a", "b.csv", [(b"s", "s.csv")])
+
+    job = get_job(job_id, 1, db)
+    assert job["status"] == "completed"
+    assert job["error"] is None
+    assert slept.call_count == 2
+    assert analysis_service.n == 3
+
+
+def test_run_job_fails_after_three_generic_errors():
+    db = FakeDB()
+    job_id = create_job(ANALYSIS_ID, 1, db)
+    analysis_service = FailingAnalysisService(RuntimeError("transient"))
+
+    with patch("backend.services.job_service.time.sleep") as slept:
+        run_job(job_id, analysis_service, db, b"a", "b.csv", [(b"s", "s.csv")])
+
+    job = get_job(job_id, 1, db)
+    assert job["status"] == "failed"
+    assert job["error"] == "Analysis failed"
+    assert "transient" not in str(job)
+    assert slept.call_count == 2
+    assert db.jobs[job_id]["attempt"] == 3

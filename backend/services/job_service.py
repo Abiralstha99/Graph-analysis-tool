@@ -1,3 +1,4 @@
+import time
 import uuid
 
 from fastapi import HTTPException, status
@@ -134,25 +135,36 @@ def run_job(
         )
 
     analysis_id = row["analysis_id"]
-    _set_job_status(db, job_id, "processing", attempt=1)
-    _set_analysis_status(db, analysis_id, "processing")
 
-    try:
-        analysis_service.run(
-            baseline_bytes,
-            baseline_name,
-            samples,
-            scoring_method,
-            zone_weights,
-            analysis_id,
-            db,
-        )
-    except Exception as exc:
-        message = _sanitize_error(exc)
-        _set_job_status(db, job_id, "failed", error_message=message)
-        _set_analysis_status(db, analysis_id, "failed", error_message=message)
+    for attempt in range(1, 4):
+        _set_job_status(db, job_id, "processing", attempt=attempt)
+        _set_analysis_status(db, analysis_id, "processing")
+
+        try:
+            analysis_service.run(
+                baseline_bytes,
+                baseline_name,
+                samples,
+                scoring_method,
+                zone_weights,
+                analysis_id,
+                db,
+            )
+        except AnalysisError as exc:
+            message = _sanitize_error(exc)
+            _set_job_status(db, job_id, "failed", error_message=message)
+            _set_analysis_status(db, analysis_id, "failed", error_message=message)
+            return
+        except Exception as exc:
+            if attempt < 3:
+                time.sleep(2 ** (attempt - 1))
+                continue
+            message = _sanitize_error(exc)
+            _set_job_status(db, job_id, "failed", error_message=message)
+            _set_analysis_status(db, analysis_id, "failed", error_message=message)
+            return
+
+        _set_job_status(db, job_id, "completed", error_message=None)
+        _set_analysis_status(db, analysis_id, "completed")
         return
-
-    _set_job_status(db, job_id, "completed", error_message=None)
-    _set_analysis_status(db, analysis_id, "completed")
  

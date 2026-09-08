@@ -12,6 +12,7 @@ from .database import get_db_connection
 from .utils.plotter import generate_and_save, SAVE_DIR
 from .graph_analysis import router as analysis_router
 from .chatbox import router as chat_router
+from .routers.health import router as health_router
 from .schemas.error import ErrorResponse, ErrorDetail
 from .middleware.auth import require_auth
 
@@ -21,6 +22,7 @@ app = FastAPI(title="MRG Labs Graphing API")
 app.include_router(auth_router)
 app.include_router(analysis_router)
 app.include_router(chat_router)
+app.include_router(health_router)
 
 # CORS (dev: allow localhost frontend)
 # IMPORTANT: Cannot use wildcard "*" when allow_credentials=True

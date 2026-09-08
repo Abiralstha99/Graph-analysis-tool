@@ -4,15 +4,33 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.graph_analysis import generate_graph_insights, router
+from backend.middleware.auth import require_auth
 
+# Override require_auth for all tests in this module: always return user_id 1.
+async def _authenticated():
+    return 1
 
 app = FastAPI()
 app.include_router(router)
+app.dependency_overrides[require_auth] = _authenticated
 client = TestClient(app)
 
 
 def test_ftir_analyze_route_replaces_legacy_route():
-    paths = {route.path for route in app.routes}
+    def collect_paths(routes):
+        """Collect all paths, recursing into included routers."""
+        paths = set()
+        for route in routes:
+            if hasattr(route, "path"):
+                paths.add(route.path)
+            # FastAPI >= 0.115 wraps included routers in _IncludedRouter
+            if hasattr(route, "original_router"):
+                paths |= collect_paths(route.original_router.routes)
+            elif hasattr(route, "routes"):
+                paths |= collect_paths(route.routes)
+        return paths
+
+    paths = collect_paths(app.routes)
 
     assert "/analysis/ftir/analyze" in paths
     assert "/analysis/generate_insights" not in paths
@@ -21,7 +39,7 @@ def test_ftir_analyze_route_replaces_legacy_route():
 def test_ftir_analyze_preserves_upload_and_sample_name_contract():
     parameters = signature(generate_graph_insights).parameters
 
-    assert list(parameters) == ["baseline", "sample", "sample_name"]
+    assert list(parameters) == ["baseline", "sample", "sample_name", "user_id"]
     assert parameters["sample_name"].default.default is None
 
 

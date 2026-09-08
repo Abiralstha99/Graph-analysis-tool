@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from mysql.connector import IntegrityError
 
 from ..database import get_db_connection
-from .dependencies import get_current_user_id
+from ..middleware.auth import require_auth
 from .passwords import hash_password, verify_password
 from .schemas import ChangePasswordPayload, UserAuth
 
@@ -37,8 +37,13 @@ def register(payload: UserAuth):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="username already exists",
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An internal error occurred. Please try again.",
+        )
     finally:
         if conn:
             conn.close()
@@ -91,7 +96,7 @@ def logout(request: Request):
 @router.post("/change_password")
 def change_password(
     payload: ChangePasswordPayload,
-    user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(require_auth),
 ):
     current_password = payload.current_password
     new_password = payload.new_password
@@ -141,8 +146,11 @@ def change_password(
         return {"status": "ok", "message": "Password updated successfully"}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An internal error occurred. Please try again.",
+        )
     finally:
         if conn:
             conn.close()

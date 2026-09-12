@@ -28,6 +28,49 @@ CREATE TABLE IF NOT EXISTS graphs (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- analyses: one row per authenticated analysis request
+CREATE TABLE IF NOT EXISTS analyses (
+    id                CHAR(36)     PRIMARY KEY,
+    user_id           INT          NOT NULL,
+    scoring_method    VARCHAR(20)  NOT NULL DEFAULT 'hybrid',
+    zone_weights      JSON,
+    status            ENUM('queued', 'processing', 'completed', 'failed', 'cancelled')
+                                   NOT NULL DEFAULT 'queued',
+    baseline_filename VARCHAR(255) NOT NULL,
+    sample_filenames  JSON         NOT NULL,
+    scores            JSON,
+    deviation_data    JSON,
+    summary           JSON,
+    error_message     TEXT,
+    created_at        TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    updated_at        TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    completed_at      TIMESTAMP    NULL,
+    INDEX idx_analyses_user_id (user_id),
+    INDEX idx_analyses_status (status),
+    INDEX idx_analyses_created_at (created_at),
+    INDEX idx_analyses_updated_at (updated_at),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- jobs: process-local background job tracking
+CREATE TABLE IF NOT EXISTS jobs (
+    id            CHAR(36)    PRIMARY KEY,
+    analysis_id   CHAR(36)    NOT NULL,
+    user_id       INT         NOT NULL,
+    status        ENUM('queued', 'processing', 'completed', 'failed', 'cancelled')
+                             NOT NULL DEFAULT 'queued',
+    attempt       INT         NOT NULL DEFAULT 0,
+    error_message TEXT,
+    created_at    TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP   DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_jobs_analysis_id (analysis_id),
+    INDEX idx_jobs_user_id (user_id),
+    INDEX idx_jobs_status (status),
+    INDEX idx_jobs_updated_at (updated_at),
+    FOREIGN KEY (analysis_id) REFERENCES analyses(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Optional: Create a test user (password: testpass123)
 -- Password hash generated using bcrypt
 -- INSERT INTO users (username, password) VALUES 
@@ -36,6 +79,8 @@ CREATE TABLE IF NOT EXISTS graphs (
 -- Display table structures
 DESCRIBE users;
 DESCRIBE graphs;
+DESCRIBE analyses;
+DESCRIBE jobs;
 
 -- Display success message
 SELECT 'Database setup complete!' AS status;

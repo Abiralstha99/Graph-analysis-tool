@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import math
 
 import numpy as np
@@ -12,7 +13,61 @@ import pandas as pd
 SUPPORTED_METHODS = frozenset(("hybrid", "rmse", "pearson", "area"))
 
 
+class AnalysisError(Exception):
+    """A user-actionable analysis failure that should not be retried."""
+
+    code = "ANALYSIS_ERROR"
+
+
 class AnalysisService:
+    def run(
+        self,
+        baseline_bytes: bytes,
+        baseline_name: str,
+        samples: list[tuple[bytes, str]],
+        scoring_method: str,
+        zone_weights: list[dict] | None,
+        analysis_id: str,
+        db,
+    ) -> None:
+        try:
+            result = self.calculate(
+                baseline_bytes,
+                baseline_name,
+                samples,
+                scoring_method=scoring_method,
+                zone_weights=zone_weights,
+            )
+        except (ValueError, UnicodeError) as exc:
+            raise AnalysisError(str(exc)) from exc
+
+        sample_filenames = [name for _, name in samples]
+        cursor = db.cursor()
+        cursor.execute(
+            """
+            UPDATE analyses
+            SET scores = %s,
+                deviation_data = %s,
+                summary = %s,
+                baseline_filename = %s,
+                sample_filenames = %s,
+                scoring_method = %s,
+                error_message = NULL
+            WHERE id = %s
+              AND status <> 'cancelled'
+            """,
+            (
+                json.dumps(result["scores"]),
+                json.dumps(result["deviationData"]),
+                json.dumps(result["summary"]),
+                baseline_name,
+                json.dumps(sample_filenames),
+                scoring_method,
+                analysis_id,
+            ),
+        )
+        db.commit()
+
     def calculate(
         self,
         baseline_bytes: bytes,

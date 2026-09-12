@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 ScoringMethod = Literal["hybrid", "rmse", "pearson", "area"]
-AnalysisStatus = Literal["queued", "processing", "completed", "failed"]
+AnalysisStatus = Literal["queued", "processing", "completed", "failed", "cancelled"]
 SUPPORTED_SCORING_METHODS = frozenset(("hybrid", "rmse", "pearson", "area"))
 
 
@@ -76,9 +76,10 @@ class AnalysisResultResponse(BaseModel):
     baseline_filename: str
     sample_filenames: list[str]
     scoring_method: ScoringMethod
-    scores: dict[str, float]
-    deviation_data: DeviationData
-    summary: AnalysisSummary
+    scores: dict[str, float] | None = None
+    deviation_data: DeviationData | None = None
+    summary: AnalysisSummary | None = None
+    error: str | None = None
     created_at: datetime
     completed_at: datetime | None = None
 

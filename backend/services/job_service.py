@@ -3,11 +3,7 @@ import uuid
 
 from fastapi import HTTPException, status
 
-try:
-    from .analysis_service import AnalysisError
-except ImportError:
-    class AnalysisError(Exception):
-        code = "ANALYSIS_ERROR"
+from .analysis_service import AnalysisError
 
 
 def create_job(analysis_id: str, user_id: int, db) -> str:
@@ -81,12 +77,14 @@ def _set_job_status(
     cur = db.cursor()
     if attempt is None:
         cur.execute(
-            "UPDATE jobs SET status = %s, error_message = %s WHERE id = %s",
+            "UPDATE jobs SET status = %s, error_message = %s "
+            "WHERE id = %s AND status <> 'cancelled'",
             (status_value, error_message, job_id),
         )
     else:
         cur.execute(
-            "UPDATE jobs SET status = %s, error_message = %s, attempt = %s WHERE id = %s",
+            "UPDATE jobs SET status = %s, error_message = %s, attempt = %s "
+            "WHERE id = %s AND status <> 'cancelled'",
             (status_value, error_message, attempt, job_id),
         )
     db.commit()
@@ -102,12 +100,14 @@ def _set_analysis_status(
     if status_value in ("completed", "failed"):
         cur.execute(
             "UPDATE analyses SET status = %s, error_message = %s, "
-            "completed_at = CURRENT_TIMESTAMP WHERE id = %s",
+            "completed_at = CURRENT_TIMESTAMP WHERE id = %s "
+            "AND status <> 'cancelled'",
             (status_value, error_message, analysis_id),
         )
     else:
         cur.execute(
-            "UPDATE analyses SET status = %s, error_message = %s WHERE id = %s",
+            "UPDATE analyses SET status = %s, error_message = %s "
+            "WHERE id = %s AND status <> 'cancelled'",
             (status_value, error_message, analysis_id),
         )
     db.commit()
@@ -125,19 +125,19 @@ def run_job(
 ) -> None:
     row = _fetch_job(db, job_id)
     if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "NOT_FOUND",
-                "message": "Job not found",
-                "details": {},
-            },
-        )
+        return
 
     analysis_id = row["analysis_id"]
 
     for attempt in range(1, 4):
+        row = _fetch_job(db, job_id)
+        if row is None or row["status"] == "cancelled":
+            return
+
         _set_job_status(db, job_id, "processing", attempt=attempt)
+        row = _fetch_job(db, job_id)
+        if row is None or row["status"] == "cancelled":
+            return
         _set_analysis_status(db, analysis_id, "processing")
 
         try:
@@ -151,20 +151,38 @@ def run_job(
                 db,
             )
         except AnalysisError as exc:
+            row = _fetch_job(db, job_id)
+            if row is None or row["status"] == "cancelled":
+                return
             message = _sanitize_error(exc)
             _set_job_status(db, job_id, "failed", error_message=message)
+            row = _fetch_job(db, job_id)
+            if row is None or row["status"] == "cancelled":
+                return
             _set_analysis_status(db, analysis_id, "failed", error_message=message)
             return
         except Exception as exc:
+            row = _fetch_job(db, job_id)
+            if row is None or row["status"] == "cancelled":
+                return
             if attempt < 3:
                 time.sleep(2 ** (attempt - 1))
                 continue
             message = _sanitize_error(exc)
             _set_job_status(db, job_id, "failed", error_message=message)
+            row = _fetch_job(db, job_id)
+            if row is None or row["status"] == "cancelled":
+                return
             _set_analysis_status(db, analysis_id, "failed", error_message=message)
             return
 
+        row = _fetch_job(db, job_id)
+        if row is None or row["status"] == "cancelled":
+            return
         _set_job_status(db, job_id, "completed", error_message=None)
+        row = _fetch_job(db, job_id)
+        if row is None or row["status"] == "cancelled":
+            return
         _set_analysis_status(db, analysis_id, "completed")
         return
  

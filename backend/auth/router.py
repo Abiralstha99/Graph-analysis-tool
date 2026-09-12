@@ -6,7 +6,7 @@ from mysql.connector import IntegrityError
 from ..database import get_db_connection
 from ..middleware.auth import require_auth
 from .passwords import hash_password, verify_password
-from .schemas import ChangePasswordPayload, UserAuth
+from ..schemas.auth import ChangePasswordPayload, UserAuth
 
 router = APIRouter(tags=["auth"])
 

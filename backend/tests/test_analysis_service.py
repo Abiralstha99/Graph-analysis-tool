@@ -1,9 +1,8 @@
-import io
-import math
+import json
 
 import pytest
 
-from backend.services.analysis_service import AnalysisService
+from backend.services.analysis_service import AnalysisError, AnalysisService
 
 
 def csv_bytes(rows: list[tuple[float, float]]) -> bytes:
@@ -62,3 +61,65 @@ def test_calculate_rejects_invalid_csv_and_method():
         service.calculate(csv_bytes([(1, 1)]), "b.csv", [], scoring_method="bad")
     with pytest.raises(ValueError, match="finite numeric"):
         service.calculate(b"metadata\nx,y\nNaN,1\n", "b.csv", [])
+
+
+class PersistingCursor:
+    def __init__(self):
+        self.sql = None
+        self.params = None
+
+    def execute(self, sql, params):
+        self.sql = sql
+        self.params = params
+
+
+class PersistingDB:
+    def __init__(self):
+        self.cursor_instance = PersistingCursor()
+        self.commits = 0
+
+    def cursor(self):
+        return self.cursor_instance
+
+    def commit(self):
+        self.commits += 1
+
+
+def test_run_calculates_and_persists_analysis_result():
+    db = PersistingDB()
+
+    AnalysisService().run(
+        csv_bytes([(1, 1), (2, 2), (3, 3)]),
+        "baseline.csv",
+        [(csv_bytes([(1, 1), (2, 2), (3, 3)]), "sample.csv")],
+        "hybrid",
+        [{"min": 1, "max": 3, "weight": 50, "label": "all", "key": "all"}],
+        "analysis-id",
+        db,
+    )
+
+    assert "UPDATE analyses" in db.cursor_instance.sql
+    scores, deviation_data, summary, baseline_name, sample_names, method, analysis_id = (
+        db.cursor_instance.params
+    )
+    assert json.loads(scores) == {"sample.csv": 100.0}
+    assert json.loads(deviation_data)["maxDeviation"] == 0.0
+    assert json.loads(summary) == {"totalSamples": 1, "good": 1, "warning": 0, "critical": 0}
+    assert baseline_name == "baseline.csv"
+    assert json.loads(sample_names) == ["sample.csv"]
+    assert method == "hybrid"
+    assert analysis_id == "analysis-id"
+    assert db.commits == 1
+
+
+def test_run_wraps_invalid_input_as_non_retryable_analysis_error():
+    with pytest.raises(AnalysisError, match="finite numeric"):
+        AnalysisService().run(
+            b"metadata\nx,y\nNaN,1\n",
+            "baseline.csv",
+            [(csv_bytes([(1, 1), (2, 2)]), "sample.csv")],
+            "hybrid",
+            None,
+            "analysis-id",
+            PersistingDB(),
+        )

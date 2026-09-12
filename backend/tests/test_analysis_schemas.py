@@ -111,6 +111,33 @@ def test_response_models_match_agreed_wire_shapes():
     assert listed.analyses[0].deviation_data.max_deviation == 0.45
 
 
+def test_incomplete_analysis_serializes_nullable_result_fields():
+    result = AnalysisResultResponse(
+        analysis_id="22222222-2222-2222-2222-222222222222",
+        user_id=1,
+        status="processing",
+        baseline_filename="baseline.csv",
+        sample_filenames=["sample.csv"],
+        scoring_method="hybrid",
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+    assert result.model_dump() == {
+        "analysis_id": UUID("22222222-2222-2222-2222-222222222222"),
+        "user_id": 1,
+        "status": "processing",
+        "baseline_filename": "baseline.csv",
+        "sample_filenames": ["sample.csv"],
+        "scoring_method": "hybrid",
+        "scores": None,
+        "deviation_data": None,
+        "summary": None,
+        "error": None,
+        "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "completed_at": None,
+    }
+
+
 def test_job_status_accepts_nullable_analysis_and_error():
     job = JobStatusResponse(
         job_id="11111111-1111-1111-1111-111111111111",
@@ -123,4 +150,21 @@ def test_job_status_accepts_nullable_analysis_and_error():
 
     assert job.analysis_id is None
     assert job.error == "analysis failed"
-    assert set(AnalysisStatus.__args__) == {"queued", "processing", "completed", "failed"}
+    assert set(AnalysisStatus.__args__) == {
+        "queued",
+        "processing",
+        "completed",
+        "failed",
+        "cancelled",
+    }
+
+
+def test_job_status_accepts_cancelled_status():
+    job = JobStatusResponse(
+        job_id="11111111-1111-1111-1111-111111111111",
+        status="cancelled",
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    assert job.status == "cancelled"

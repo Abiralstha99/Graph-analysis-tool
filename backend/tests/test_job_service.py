@@ -123,6 +123,18 @@ class FlakyService:
         return None
 
 
+class CancellingService:
+    def __init__(self, db, job_id):
+        self.db = db
+        self.job_id = job_id
+        self.calls = 0
+
+    def run(self, *args, **kwargs):
+        self.calls += 1
+        self.db.jobs[self.job_id]["status"] = "cancelled"
+        self.db.analyses[ANALYSIS_ID]["status"] = "cancelled"
+
+
 def test_create_job_inserts_queued_row():
     db = FakeDB()
 
@@ -282,3 +294,27 @@ def test_run_job_fails_after_three_generic_errors():
     assert "transient" not in str(job)
     assert slept.call_count == 2
     assert db.jobs[job_id]["attempt"] == 3
+
+
+def test_run_job_skips_cancelled_job_without_calling_analysis_service():
+    db = FakeDB()
+    job_id = create_job(ANALYSIS_ID, 1, db)
+    db.jobs[job_id]["status"] = "cancelled"
+    service = FakeAnalysisService()
+
+    run_job(job_id, service, db, b"a", "b.csv", [(b"s", "s.csv")])
+
+    assert not hasattr(service, "called_with")
+    assert db.jobs[job_id]["status"] == "cancelled"
+
+
+def test_run_job_does_not_overwrite_cancellation_during_analysis():
+    db = FakeDB()
+    job_id = create_job(ANALYSIS_ID, 1, db)
+    service = CancellingService(db, job_id)
+
+    run_job(job_id, service, db, b"a", "b.csv", [(b"s", "s.csv")])
+
+    assert service.calls == 1
+    assert db.jobs[job_id]["status"] == "cancelled"
+    assert db.analyses[ANALYSIS_ID]["status"] == "cancelled"

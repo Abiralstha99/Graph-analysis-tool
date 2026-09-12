@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, Form, Request, Depends, HTTPException, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +14,7 @@ from .utils.plotter import generate_and_save, SAVE_DIR
 from .graph_analysis import router as analysis_router
 from .chatbox import router as chat_router
 from .routers.health import router as health_router
+from .routers.analyses import router as analyses_router
 from .schemas.error import ErrorResponse, ErrorDetail
 from .middleware.auth import require_auth
 
@@ -23,6 +25,7 @@ app.include_router(auth_router)
 app.include_router(analysis_router)
 app.include_router(chat_router)
 app.include_router(health_router)
+app.include_router(analyses_router)
 
 # CORS (dev: allow localhost frontend)
 # IMPORTANT: Cannot use wildcard "*" when allow_credentials=True
@@ -78,6 +81,19 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         status_code=exc.status_code,
         content=error_response.model_dump(),
     )
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Keep FastAPI's parameter validation inside the canonical error envelope."""
+    error_response = ErrorResponse(
+        error=ErrorDetail(
+            code="VALIDATION_ERROR",
+            message="Invalid request",
+            details={},
+        )
+    )
+    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=error_response.model_dump())
 
 
 @app.post("/generate_graphs")

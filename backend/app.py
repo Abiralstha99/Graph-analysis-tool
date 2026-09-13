@@ -18,6 +18,7 @@ from .routers.analyses import router as analyses_router
 from .routers.jobs import router as jobs_router
 from .schemas.error import ErrorResponse, ErrorDetail
 from .middleware.auth import require_auth
+from .middleware.logging import configure_request_logging
 
 app = FastAPI(title="MRG Labs Graphing API")
 
@@ -41,6 +42,9 @@ app.add_middleware(
 
 # Session middleware for simple server-side sessions
 configure_session_middleware(app)
+
+# Access log wraps the rest of the stack so duration includes session + routes.
+configure_request_logging(app)
 
 # Static mounting for generated graphs
 static_root = os.path.join(os.path.dirname(__file__), 'static')

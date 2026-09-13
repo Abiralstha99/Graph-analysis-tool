@@ -4,6 +4,12 @@ from fastapi import HTTPException, Request
 from backend.middleware.auth import require_auth
 
 
+@pytest.fixture
+def anyio_backend():
+    """Exercise the application's supported asyncio runtime only."""
+    return "asyncio"
+
+
 def make_request(session: dict) -> Request:
     request = Request({
         "type": "http",

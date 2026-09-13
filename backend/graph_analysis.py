@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from fastapi.responses import JSONResponse
 from typing import List, Optional
 import base64
@@ -9,7 +9,7 @@ import time
 from .config import Settings
 from .middleware.auth import require_auth
 from .services.graph_statistics import summarize_series
-from .services.analysis_service import AnalysisService
+from .services.analysis_service import AnalysisError, AnalysisService
 
 try:
     import google.generativeai as genai
@@ -291,7 +291,7 @@ async def calculate_ftir_deviation(
             },
             "processingTime": (time.perf_counter() - started) * 1000,
         }
-    except ValueError as exc:
+    except (AnalysisError, ValueError) as exc:
         # Return the canonical error shape directly so it is consistent whether
         # or not the global HTTPException handler is registered (e.g. in tests).
         return JSONResponse(
@@ -322,7 +322,7 @@ async def calculate_ftir_scores(
             **result,
             "processingTime": (time.perf_counter() - started) * 1000,
         }
-    except ValueError as exc:
+    except (AnalysisError, ValueError) as exc:
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={"error": {"code": "VALIDATION_ERROR", "message": str(exc), "details": {}}},

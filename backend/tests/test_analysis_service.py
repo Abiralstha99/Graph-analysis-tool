@@ -2,7 +2,12 @@ import json
 
 import pytest
 
-from backend.services.analysis_service import AnalysisError, AnalysisService
+from backend.services.analysis_service import (
+    AnalysisError,
+    AnalysisService,
+    ParseError,
+    ValidationError,
+)
 
 
 def csv_bytes(rows: list[tuple[float, float]]) -> bytes:
@@ -42,7 +47,7 @@ def test_calculate_uses_tolerance_weights_and_aggregate_deviation():
 def test_calculate_returns_neutral_score_for_insufficient_overlap_and_constant_pearson():
     service = AnalysisService()
     insufficient = service.calculate(
-        csv_bytes([(1, 1), (2, 2)]), "b.csv", [(csv_bytes([(9, 1)]), "s.csv")]
+        csv_bytes([(1, 1), (2, 2)]), "b.csv", [(csv_bytes([(9, 1), (10, 2)]), "s.csv")]
     )
     constant = service.calculate(
         csv_bytes([(1, 1), (2, 1), (3, 1)]),
@@ -57,10 +62,10 @@ def test_calculate_returns_neutral_score_for_insufficient_overlap_and_constant_p
 
 def test_calculate_rejects_invalid_csv_and_method():
     service = AnalysisService()
-    with pytest.raises(ValueError, match="scoring method"):
-        service.calculate(csv_bytes([(1, 1)]), "b.csv", [], scoring_method="bad")
-    with pytest.raises(ValueError, match="finite numeric"):
-        service.calculate(b"metadata\nx,y\nNaN,1\n", "b.csv", [])
+    with pytest.raises(ValidationError, match="scoring method"):
+        service.calculate(csv_bytes([(1, 1), (2, 2)]), "b.csv", [], scoring_method="bad")
+    with pytest.raises(ParseError, match="finite numeric"):
+        service.calculate(b"metadata\nx,y\nNaN,1\n2,3\n", "b.csv", [(csv_bytes([(1, 1), (2, 2)]), "s.csv")])
 
 
 class PersistingCursor:
@@ -115,11 +120,69 @@ def test_run_calculates_and_persists_analysis_result():
 def test_run_wraps_invalid_input_as_non_retryable_analysis_error():
     with pytest.raises(AnalysisError, match="finite numeric"):
         AnalysisService().run(
-            b"metadata\nx,y\nNaN,1\n",
+            b"metadata\nx,y\nNaN,1\n2,3\n",
             "baseline.csv",
             [(csv_bytes([(1, 1), (2, 2)]), "sample.csv")],
             "hybrid",
             None,
             "analysis-id",
             PersistingDB(),
+        )
+
+
+@pytest.mark.parametrize("filename", ["baseline.pdf", "baseline", "baseline.xlsx"])
+def test_validate_inputs_rejects_disallowed_filename_extensions(filename):
+    service = AnalysisService()
+
+    with pytest.raises(ValidationError, match="supported extension"):
+        service.validate_inputs(
+            csv_bytes([(1, 1), (2, 2)]),
+            filename,
+            [(csv_bytes([(1, 1), (2, 2)]), "sample.csv")],
+        )
+
+
+def test_validate_inputs_allows_supported_extensions_case_insensitively():
+    service = AnalysisService()
+
+    baseline, samples = service.validate_inputs(
+        csv_bytes([(1, 1), (2, 2)]),
+        "baseline.DAT",
+        [(csv_bytes([(1, 1), (2, 2)]), "sample.Txt")],
+    )
+
+    assert baseline[0].tolist() == [1.0, 2.0]
+    assert samples[0][1] == "sample.Txt"
+
+
+def test_validate_inputs_rejects_file_larger_than_ten_megabytes():
+    service = AnalysisService()
+
+    with pytest.raises(ValidationError, match="10 MB"):
+        service.validate_inputs(
+            b"x" * (10 * 1024 * 1024 + 1),
+            "baseline.csv",
+            [(csv_bytes([(1, 1), (2, 2)]), "sample.csv")],
+        )
+
+
+def test_validate_inputs_rejects_fewer_than_two_data_rows():
+    service = AnalysisService()
+
+    with pytest.raises(ParseError, match="at least two data rows"):
+        service.validate_inputs(
+            csv_bytes([(1, 1)]),
+            "baseline.csv",
+            [(csv_bytes([(1, 1), (2, 2)]), "sample.csv")],
+        )
+
+
+def test_validate_inputs_rejects_malformed_numeric_data():
+    service = AnalysisService()
+
+    with pytest.raises(ParseError, match="finite numeric"):
+        service.validate_inputs(
+            b"metadata\nx,y\n1,nope\n2,3\n",
+            "baseline.csv",
+            [(csv_bytes([(1, 1), (2, 2)]), "sample.csv")],
         )

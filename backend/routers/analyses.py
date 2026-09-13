@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import json
 from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import Response
-from pydantic import ValidationError
+from pydantic import ValidationError as PydanticValidationError
 
 from ..database import get_db_connection
 from ..middleware.auth import require_auth
@@ -21,11 +20,10 @@ from ..schemas.analysis import (
     AnalysisResultResponse,
     AnalysisSummary,
     DeviationData,
-    JobStatusResponse,
     ZoneWeight,
 )
 from ..services import job_service
-from ..services.analysis_service import AnalysisService
+from ..services.analysis_service import AnalysisError, AnalysisService
 
 
 router = APIRouter(prefix="/api/v1/analyses", tags=["analyses"])
@@ -102,18 +100,6 @@ def _analysis_response(row: dict[str, Any]) -> AnalysisResultResponse:
     )
 
 
-def _job_status_response(row: dict[str, Any], status_value: str | None = None) -> JobStatusResponse:
-    now = datetime.now(timezone.utc)
-    return JobStatusResponse(
-        job_id=row.get("job_id") or row.get("id"),
-        status=status_value or row.get("job_status") or row["status"],
-        analysis_id=row.get("analysis_id") or row.get("id"),
-        error=row.get("job_error", row.get("error_message")),
-        created_at=row.get("job_created_at") or row.get("created_at") or now,
-        updated_at=row.get("job_updated_at") or row.get("updated_at") or now,
-    )
-
-
 def _fetch_analysis(db, analysis_id: str) -> dict[str, Any] | None:
     cursor = db.cursor(dictionary=True)
     cursor.execute(
@@ -187,6 +173,7 @@ async def create_analysis(
             scoring_method=scoring_method,
             zone_weights=validated_weights,
         )
+        AnalysisService().validate_inputs(baseline_bytes, baseline_name, sample_data)
         analysis_id = str(uuid4())
 
         db = get_db_connection()
@@ -213,7 +200,10 @@ async def create_analysis(
     except HTTPException:
         _close_connection(db, rollback=True)
         raise
-    except (ValidationError, json.JSONDecodeError, TypeError, ValueError):
+    except AnalysisError as exc:
+        _close_connection(db, rollback=True)
+        raise _error(422, "VALIDATION_ERROR", str(exc))
+    except (PydanticValidationError, json.JSONDecodeError, TypeError, ValueError):
         _close_connection(db, rollback=True)
         raise _error(422, "VALIDATION_ERROR", "Invalid analysis request")
     except Exception:
@@ -281,7 +271,7 @@ def list_analyses(
         _close_connection(db, rollback=True)
 
 
-@router.get("/{analysis_id}", response_model=AnalysisResultResponse | JobStatusResponse)
+@router.get("/{analysis_id}", response_model=AnalysisResultResponse)
 def get_analysis(analysis_id: str, user_id: int = Depends(require_auth)):
     db = None
     try:
@@ -291,9 +281,7 @@ def get_analysis(analysis_id: str, user_id: int = Depends(require_auth)):
             raise _error(404, "NOT_FOUND", "Analysis not found")
         if int(row["user_id"]) != int(user_id):
             raise _error(403, "FORBIDDEN", "Not allowed to access this analysis")
-        if row["status"] == "completed":
-            return _analysis_response(row)
-        return _job_status_response(row)
+        return _analysis_response(row)
     except HTTPException:
         raise
     except Exception:
@@ -302,7 +290,11 @@ def get_analysis(analysis_id: str, user_id: int = Depends(require_auth)):
         _close_connection(db, rollback=True)
 
 
-@router.delete("/{analysis_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{analysis_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={status.HTTP_202_ACCEPTED: {"model": AnalysisResultResponse}},
+)
 def delete_analysis(analysis_id: str, user_id: int = Depends(require_auth)):
     db = None
     try:
@@ -327,9 +319,8 @@ def delete_analysis(analysis_id: str, user_id: int = Depends(require_auth)):
             )
             db.commit()
             row["status"] = "cancelled"
-            row["job_status"] = "cancelled"
             return Response(
-                content=_job_status_response(row).model_dump_json(),
+                content=_analysis_response(row).model_dump_json(),
                 status_code=status.HTTP_202_ACCEPTED,
                 media_type="application/json",
             )

@@ -5,18 +5,33 @@ from __future__ import annotations
 import io
 import json
 import math
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 
 SUPPORTED_METHODS = frozenset(("hybrid", "rmse", "pearson", "area"))
+ALLOWED_UPLOAD_SUFFIXES = frozenset((".csv", ".txt", ".dat"))
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
 class AnalysisError(Exception):
     """A user-actionable analysis failure that should not be retried."""
 
     code = "ANALYSIS_ERROR"
+
+
+class ValidationError(AnalysisError):
+    """An upload's metadata or request fields are invalid."""
+
+    code = "VALIDATION_ERROR"
+
+
+class ParseError(AnalysisError):
+    """An upload cannot be parsed as an FTIR data series."""
+
+    code = "PARSE_ERROR"
 
 
 class AnalysisService:
@@ -30,16 +45,13 @@ class AnalysisService:
         analysis_id: str,
         db,
     ) -> None:
-        try:
-            result = self.calculate(
-                baseline_bytes,
-                baseline_name,
-                samples,
-                scoring_method=scoring_method,
-                zone_weights=zone_weights,
-            )
-        except (ValueError, UnicodeError) as exc:
-            raise AnalysisError(str(exc)) from exc
+        result = self.calculate(
+            baseline_bytes,
+            baseline_name,
+            samples,
+            scoring_method=scoring_method,
+            zone_weights=zone_weights,
+        )
 
         sample_filenames = [name for _, name in samples]
         cursor = db.cursor()
@@ -77,11 +89,12 @@ class AnalysisService:
         zone_weights: list[dict] | None = None,
     ) -> dict:
         if scoring_method not in SUPPORTED_METHODS:
-            raise ValueError(f"Unsupported scoring method: {scoring_method}")
-        baseline = self._parse(baseline_bytes, baseline_name)
-        if not samples:
-            raise ValueError("At least one sample is required")
-        parsed_samples = [(self._parse(data, name), name) for data, name in samples]
+            raise ValidationError(f"Unsupported scoring method: {scoring_method}")
+        baseline, parsed_samples = self.validate_inputs(
+            baseline_bytes,
+            baseline_name,
+            samples,
+        )
         weights = zone_weights or []
 
         scores = {
@@ -118,19 +131,51 @@ class AnalysisService:
             "summary": summary,
         }
 
+    @classmethod
+    def validate_inputs(
+        cls,
+        baseline_bytes: bytes,
+        baseline_name: str,
+        samples: list[tuple[bytes, str]],
+    ) -> tuple[tuple[np.ndarray, np.ndarray], list[tuple[tuple[np.ndarray, np.ndarray], str]]]:
+        """Validate upload metadata and parse every input before queuing work."""
+        if not samples:
+            raise ValidationError("At least one sample is required")
+
+        baseline = cls._validate_file(baseline_bytes, baseline_name)
+        parsed_samples = [
+            (cls._validate_file(data, name), name)
+            for data, name in samples
+        ]
+        return baseline, parsed_samples
+
+    @classmethod
+    def _validate_file(cls, data: bytes, name: str) -> tuple[np.ndarray, np.ndarray]:
+        suffix = Path(name).suffix.lower()
+        if suffix not in ALLOWED_UPLOAD_SUFFIXES:
+            allowed = ", ".join(sorted(ALLOWED_UPLOAD_SUFFIXES))
+            raise ValidationError(f"{name} must use a supported extension: {allowed}")
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise ValidationError(f"{name} exceeds the 10 MB upload limit")
+        return cls._parse(data, name)
+
     @staticmethod
     def _parse(data: bytes, name: str) -> tuple[np.ndarray, np.ndarray]:
         try:
             frame = pd.read_csv(io.BytesIO(data), header=1)
-            values = frame.iloc[:, :2].apply(pd.to_numeric, errors="coerce")
-        except (pd.errors.EmptyDataError, pd.errors.ParserError, IndexError, ValueError) as exc:
-            raise ValueError(f"Invalid numeric data in {name}") from exc
-        if values.empty or values.shape[1] < 2 or values.isna().any().any():
-            raise ValueError(f"Invalid numeric data in {name}: finite numeric x/y data is required")
+        except (pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError, ValueError) as exc:
+            raise ParseError(f"Invalid numeric data in {name}") from exc
+        if frame.shape[1] < 2:
+            raise ParseError(f"Invalid numeric data in {name}: two numeric columns are required")
+        values = frame.iloc[:, :2].apply(pd.to_numeric, errors="coerce")
+        if len(values) < 2:
+            raise ParseError(f"Invalid numeric data in {name}: at least two data rows are required")
+        if values.isna().any().any():
+            raise ParseError(f"Invalid numeric data in {name}: finite numeric x/y data is required")
         x = values.iloc[:, 0].to_numpy(dtype=float)
         y = values.iloc[:, 1].to_numpy(dtype=float)
         if not (np.isfinite(x).all() and np.isfinite(y).all()):
-            raise ValueError(f"Invalid numeric data in {name}: finite numeric x/y data is required")
+            raise ParseError(f"Invalid numeric data in {name}: finite numeric x/y data is required")
         return x, y
 
     @staticmethod

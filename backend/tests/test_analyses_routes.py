@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 from uuid import uuid4
 
+import pytest
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
 from fastapi.exceptions import RequestValidationError
@@ -97,6 +98,50 @@ def test_create_analysis_rejects_empty_samples_with_canonical_error():
     response = client.post(
         "/api/v1/analyses",
         files=[("baseline", csv_file("baseline.csv"))],
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+@pytest.mark.parametrize(
+    ("filename", "contents"),
+    [
+        ("baseline.pdf", "metadata\nx,y\n1,2\n2,3\n"),
+        ("baseline.csv", "metadata\nx,y\n1,2\n"),
+        ("baseline.csv", "metadata\nx,y\n1,nope\n2,3\n"),
+    ],
+)
+def test_create_analysis_rejects_invalid_upload_before_persisting(monkeypatch, filename, contents):
+    def fail_if_db_requested():
+        raise AssertionError("invalid uploads must not create a database connection")
+
+    monkeypatch.setattr("backend.routers.analyses.get_db_connection", fail_if_db_requested)
+
+    response = client.post(
+        "/api/v1/analyses",
+        files=[
+            ("baseline", csv_file(filename, contents)),
+            ("samples", csv_file("sample.csv")),
+        ],
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_create_analysis_rejects_oversized_upload_before_persisting(monkeypatch):
+    def fail_if_db_requested():
+        raise AssertionError("oversized uploads must not create a database connection")
+
+    monkeypatch.setattr("backend.routers.analyses.get_db_connection", fail_if_db_requested)
+
+    response = client.post(
+        "/api/v1/analyses",
+        files=[
+            ("baseline", csv_file("baseline.csv", "x" * (10 * 1024 * 1024 + 1))),
+            ("samples", csv_file("sample.csv")),
+        ],
     )
 
     assert response.status_code == 422
@@ -227,7 +272,7 @@ def test_list_analysis_is_scoped_to_authenticated_user(monkeypatch):
     assert db.closed
 
 
-def test_detail_returns_completed_result_or_job_status(monkeypatch):
+def test_detail_always_returns_analysis_shape(monkeypatch):
     completed = analysis_row(status="completed")
     processing = analysis_row(status="processing")
     db = AnalysisDB([completed, processing])
@@ -240,7 +285,10 @@ def test_detail_returns_completed_result_or_job_status(monkeypatch):
     assert completed_response.json()["scores"] == {"sample.csv": 100.0}
     assert processing_response.status_code == 200
     assert processing_response.json()["status"] == "processing"
-    assert "baseline_filename" not in processing_response.json()
+    assert processing_response.json()["baseline_filename"] == "baseline.csv"
+    assert processing_response.json()["sample_filenames"] == ["sample.csv"]
+    assert processing_response.json()["scores"] is None
+    assert "job_id" not in processing_response.json()
 
 
 def test_active_delete_cancels_and_retains_analysis(monkeypatch):
@@ -252,6 +300,9 @@ def test_active_delete_cancels_and_retains_analysis(monkeypatch):
 
     assert response.status_code == 202
     assert response.json()["status"] == "cancelled"
+    assert response.json()["analysis_id"] == row["id"]
+    assert response.json()["baseline_filename"] == "baseline.csv"
+    assert "job_id" not in response.json()
     assert row["id"] in db.rows
     assert db.rows[row["id"]]["status"] == "cancelled"
 
@@ -268,6 +319,18 @@ def test_terminal_delete_removes_analysis(monkeypatch):
     assert row["id"] not in db.rows
 
 
+@pytest.mark.parametrize("status", ["completed", "failed", "cancelled"])
+def test_terminal_statuses_are_physically_deleted(monkeypatch, status):
+    row = analysis_row(status=status)
+    db = AnalysisDB([row])
+    monkeypatch.setattr("backend.routers.analyses.get_db_connection", lambda: db)
+
+    response = client.delete(f"/api/v1/analyses/{row['id']}")
+
+    assert response.status_code == 204
+    assert row["id"] not in db.rows
+
+
 def test_detail_rejects_other_owner(monkeypatch):
     row = analysis_row(user_id=99)
     db = AnalysisDB([row])
@@ -281,3 +344,13 @@ def test_detail_rejects_other_owner(monkeypatch):
         "message": "Not allowed to access this analysis",
         "details": {},
     }
+
+
+def test_detail_returns_not_found_for_unknown_analysis(monkeypatch):
+    db = AnalysisDB([])
+    monkeypatch.setattr("backend.routers.analyses.get_db_connection", lambda: db)
+
+    response = client.get(f"/api/v1/analyses/{uuid4()}")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "NOT_FOUND"

@@ -15,6 +15,7 @@ from .graph_analysis import router as analysis_router
 from .chatbox import router as chat_router
 from .routers.health import router as health_router
 from .routers.analyses import router as analyses_router
+from .routers.jobs import router as jobs_router
 from .schemas.error import ErrorResponse, ErrorDetail
 from .middleware.auth import require_auth
 
@@ -26,6 +27,7 @@ app.include_router(analysis_router)
 app.include_router(chat_router)
 app.include_router(health_router)
 app.include_router(analyses_router)
+app.include_router(jobs_router)
 
 # CORS (dev: allow localhost frontend)
 # IMPORTANT: Cannot use wildcard "*" when allow_credentials=True

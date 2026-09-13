@@ -39,8 +39,8 @@ contracts in the **Shared Contracts** section.
 
 | Field           | Type        | Required | Notes                                        |
 |-----------------|-------------|:--------:|----------------------------------------------|
-| `baseline`      | `File`      | ✅       | CSV, max 10 MB                               |
-| `samples`       | `File[]`    | ✅       | 1–20 CSV files, max 10 MB each               |
+| `baseline`      | `File`      | ✅       | `.csv`, `.txt`, or `.dat`; max 10 MB         |
+| `samples`       | `File[]`    | ✅       | 1–20 supported files, max 10 MB each         |
 | `scoring_method`| `string`    | ❌       | `hybrid` \| `rmse` \| `pearson` \| `area`, default `hybrid` |
 | `zone_weights`  | JSON string | ❌       | Array of `{min, max, weight, label, key}`    |
 
@@ -59,7 +59,7 @@ contracts in the **Shared Contracts** section.
 ```json
 {
   "job_id": "uuid",
-  "status": "queued | processing | completed | failed",
+  "status": "queued | processing | completed | failed | cancelled",
   "analysis_id": "uuid | null",
   "error": "string | null",
   "created_at": "ISO8601",
@@ -68,6 +68,10 @@ contracts in the **Shared Contracts** section.
 ```
 
 #### `GET /api/v1/analyses/{analysis_id}` — response `200`
+
+This endpoint always returns the analysis shape below. For incomplete or
+failed analyses, `scores`, `deviation_data`, `summary`, and `completed_at` are
+`null`; clients poll `/api/v1/jobs/{job_id}` for job progress.
 
 ```json
 {
@@ -89,6 +93,13 @@ contracts in the **Shared Contracts** section.
   "completed_at": "ISO8601"
 }
 ```
+
+#### `DELETE /api/v1/analyses/{analysis_id}`
+
+- `queued` and `processing` analyses and their jobs are marked `cancelled` and
+  return `202` with the analysis response shape.
+- `completed`, `failed`, and `cancelled` analyses are physically deleted and
+  return `204 No Content`.
 
 #### `GET /api/v1/analyses` — response `200`
 
@@ -126,7 +137,7 @@ CREATE TABLE analyses (
     user_id           INT          NOT NULL,
     scoring_method    VARCHAR(20)  NOT NULL DEFAULT 'hybrid',
     zone_weights      JSON,
-    status            ENUM('queued','processing','completed','failed')
+    status            ENUM('queued','processing','completed','failed','cancelled')
                                    NOT NULL DEFAULT 'queued',
     baseline_filename VARCHAR(255),
     sample_filenames  JSON,                        -- ["s1.csv", "s2.csv"]
@@ -147,7 +158,7 @@ CREATE TABLE jobs (
     id            CHAR(36)    PRIMARY KEY,   -- UUID
     analysis_id   CHAR(36)    NOT NULL,
     user_id       INT         NOT NULL,
-    status        ENUM('queued','processing','completed','failed')
+    status        ENUM('queued','processing','completed','failed','cancelled')
                               NOT NULL DEFAULT 'queued',
     attempt       INT         NOT NULL DEFAULT 0,
     error_message TEXT,

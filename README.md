@@ -1,10 +1,10 @@
 # MRG Labs Graph Analysis Tool
 
-[![React](https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react&logoColor=white)](https://react.dev)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![Python](https://img.shields.io/badge/Python-3.11-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
-[![Docker](https://img.shields.io/badge/Docker-compose-2496ed?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+![React](https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?style=flat-square&logo=typescript&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688?style=flat-square&logo=fastapi&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11-3776ab?style=flat-square&logo=python&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-compose-2496ed?style=flat-square&logo=docker&logoColor=white)
 
 [Demo](#demo) • [Overview](#overview) • [Features](#features) • [Getting started](#getting-started) • [Usage](#usage) • [Documentation](#documentation) • [Project structure](#project-structure)
 
@@ -14,12 +14,9 @@ Upload a baseline FTIR CSV and multiple sample CSVs, overlay spectra in the brow
 
 Screen recording of the application:
 
-[`assets/graph-analysis-sr.mov`](./assets/graph-analysis-sr.mov)
+`[assets/graph-analysis-sr.mp4](./assets/graph-analysis-sr.mov)`
 
-<video controls width="100%" title="Application screen recording">
-  <source src="./assets/graph-analysis-sr.mov" type="video/quicktime">
-  Your browser does not support the video tag. <a href="./assets/graph-analysis-sr.mov">Download graph-analysis-sr.mov</a>
-</video>
+
 
 ## Overview
 
@@ -42,6 +39,8 @@ Browser (React / Vite)
 FastAPI  →  MySQL  +  Gemini API  +  Matplotlib exports
 ```
 
+
+
 ## Features
 
 - Baseline (single) + multi-sample CSV upload with live overlay preview
@@ -51,13 +50,17 @@ FastAPI  →  MySQL  +  Gemini API  +  Matplotlib exports
 - Batch PNG export with standard download or Chromium folder export
 - AI graph insights and conversational Q&A (requires `GEMINI_API_KEY`)
 
+
+
 ### Exported graph example
 
 ![Exported spectroscopy comparison graph](./assets/105199.png)
 
-<p align="center"><em>Example PNG export: baseline vs sample overlay with absorbance vs wavenumber (cm⁻¹)</em></p>
+*Example PNG export: baseline vs sample overlay with absorbance vs wavenumber (cm⁻¹)*
 
 ## Getting started
+
+
 
 ### Prerequisites
 
@@ -67,6 +70,8 @@ FastAPI  →  MySQL  +  Gemini API  +  Matplotlib exports
 - [Docker](https://www.docker.com/) (optional, for compose deployment)
 - A [Google AI Studio](https://aistudio.google.com/apikey) API key if you want AI analysis/chat
 
+
+
 ### Option A — Docker Compose
 
 ```bash
@@ -75,18 +80,26 @@ docker compose build
 docker compose up
 ```
 
-| Service  | URL                      |
-|----------|--------------------------|
-| Frontend | http://localhost:5173    |
-| Backend  | http://localhost:8080    |
+
+| Service  | URL                                            |
+| -------- | ---------------------------------------------- |
+| Frontend | [http://localhost:5173](http://localhost:5173) |
+| Backend  | [http://localhost:8080](http://localhost:8080) |
+
+
+
 
 ### Option B — Local development
+
+
 
 #### 1. Database
 
 ```bash
 mysql -u root -p < backend/database_setup.sql
 ```
+
+
 
 #### 2. Backend
 
@@ -118,6 +131,8 @@ Start the API (still from the repository root, with the venv active):
 python -m uvicorn backend.app:app --reload --port 8080
 ```
 
+
+
 #### 3. Frontend
 
 ```bash
@@ -126,10 +141,12 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:5173** and create an account via **Sign Up**.
+Open **[http://localhost:5173](http://localhost:5173)** and create an account via **Sign Up**.
 
 > [!TIP]
 > In development, Vite proxies `/generate_graphs`, `/static`, and `/api/analysis` to the backend on port 8080.
+
+
 
 ## Usage
 
@@ -142,15 +159,21 @@ Open **http://localhost:5173** and create an account via **Sign Up**.
 > [!IMPORTANT]
 > Folder export uses the File System Access API and works in Chrome, Edge, Opera, and other Chromium browsers. Firefox and Safari fall back to the standard ZIP download.
 
+
+
 ## Documentation
 
-| Doc | Description |
-|-----|-------------|
-| [docs/onboarding.md](docs/onboarding.md) | Codebase map and key call paths |
-| [docs/PIPELINE.md](docs/PIPELINE.md) | End-to-end data flow |
-| [docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md) | Analysis and chat API details |
-| [docs/FTIR_SCORING_METHODOLOGY.md](docs/FTIR_SCORING_METHODOLOGY.md) | Scoring methods and wavelength weighting |
-| [AGENTS.md](AGENTS.md) | Engineering standards for contributors and agents |
+
+| Doc                                                                  | Description                                       |
+| -------------------------------------------------------------------- | ------------------------------------------------- |
+| [docs/onboarding.md](docs/onboarding.md)                             | Codebase map and key call paths                   |
+| [docs/PIPELINE.md](docs/PIPELINE.md)                                 | End-to-end data flow                              |
+| [docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md)               | Analysis and chat API details                     |
+| [docs/FTIR_SCORING_METHODOLOGY.md](docs/FTIR_SCORING_METHODOLOGY.md) | Scoring methods and wavelength weighting          |
+| [AGENTS.md](AGENTS.md)                                               | Engineering standards for contributors and agents |
+
+
+
 
 ## Project structure
 
@@ -175,6 +198,8 @@ Graph-analysis-tool/
 └── Dockerfile.frontend
 ```
 
+
+
 ## Development
 
 ```bash
@@ -185,14 +210,18 @@ cd frontend && npm run test -- --run && npm run build
 pytest backend/tests -q
 ```
 
+
+
 ## Tech stack
 
-| Layer | Stack |
-|-------|--------|
+
+| Layer    | Stack                                                       |
+| -------- | ----------------------------------------------------------- |
 | Frontend | React 18, Vite, TypeScript, Chakra UI, Chart.js, Papa Parse |
-| Backend | FastAPI, Pandas, Matplotlib, bcrypt, Google Generative AI |
-| Data | MySQL |
-| Deploy | Docker Compose, nginx (frontend production image) |
+| Backend  | FastAPI, Pandas, Matplotlib, bcrypt, Google Generative AI   |
+| Data     | MySQL                                                       |
+| Deploy   | Docker Compose, nginx (frontend production image)           |
+
 
 ---
 

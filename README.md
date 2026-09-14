@@ -14,9 +14,9 @@ Upload a baseline FTIR CSV and multiple sample CSVs, overlay spectra in the brow
 
 Screen recording of the application:
 
-`[assets/graph-analysis-sr.mp4](./assets/graph-analysis-sr.mov)`
+<video src="./assets/graph-analysis-sr.mp4" controls width="100%" title="Application screen recording"></video>
 
-
+<p align="center"><em><a href="./assets/graph-analysis-sr.mp4">graph-analysis-sr.mp4</a></em></p>
 
 ## Overview
 

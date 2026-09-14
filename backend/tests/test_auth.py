@@ -2,6 +2,7 @@ import importlib
 
 import pytest
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from mysql.connector import IntegrityError
@@ -180,6 +181,13 @@ def build_auth_client(monkeypatch, store=None):
         )
 
     isolated.include_router(auth_router)
+    isolated.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     configure_session_middleware(isolated)
 
     @isolated.get("/protected")
@@ -229,6 +237,28 @@ def test_register_weak_password_returns_weak_password_code(monkeypatch):
     assert error["code"] == "WEAK_PASSWORD"
     assert error["details"] == {}
     assert store.users_by_username == {}
+
+
+def test_login_database_failure_returns_internal_error_envelope(monkeypatch):
+    def fail_db():
+        raise RuntimeError(
+            "Database environment variables DB_HOST, DB_USER, DB_PASS, DB_NAME must be set"
+        )
+
+    client, _store = build_auth_client(monkeypatch)
+    monkeypatch.setattr(auth_routes, "get_db_connection", fail_db)
+
+    response = client.post(
+        "/login",
+        json={"username": "alice", "password": STRONG_PASSWORD},
+        headers={"Origin": "http://localhost:5173"},
+    )
+
+    assert response.status_code == 500
+    error = _error_envelope(response)
+    assert error["code"] == "INTERNAL_ERROR"
+    assert error["message"] == "An internal error occurred. Please try again."
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
 
 
 def test_login_valid_credentials(monkeypatch):

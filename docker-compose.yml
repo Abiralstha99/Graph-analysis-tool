@@ -5,13 +5,10 @@ services:
       dockerfile: Dockerfile.backend
     ports:
       - "8080:8080"
+    env_file:
+      - backend/.env
     environment:
       - PYTHONUNBUFFERED=1
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - DB_HOST=${DB_HOST}
-      - DB_USER=${DB_USER}
-      - DB_PASS=${DB_PASS}
-      - DB_NAME=${DB_NAME}
     volumes:
       - ./backend/static/generated_graphs:/app/backend/static/generated_graphs
   frontend:

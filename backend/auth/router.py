@@ -98,6 +98,14 @@ def login(payload: UserAuth, request: Request):
 
         request.session["user_id"] = int(row["id"])
         return {"status": "ok", "user_id": row["id"]}
+    except HTTPException:
+        raise
+    except Exception:
+        raise _error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "INTERNAL_ERROR",
+            "An internal error occurred. Please try again.",
+        )
     finally:
         if conn:
             conn.close()

@@ -6,13 +6,20 @@
 [![Python](https://img.shields.io/badge/Python-3.11-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
 [![Docker](https://img.shields.io/badge/Docker-compose-2496ed?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 
-[Overview](#overview) • [Features](#features) • [Getting started](#getting-started) • [Usage](#usage) • [Documentation](#documentation) • [Project structure](#project-structure)
+[Demo](#demo) • [Overview](#overview) • [Features](#features) • [Getting started](#getting-started) • [Usage](#usage) • [Documentation](#documentation) • [Project structure](#project-structure)
 
 Upload a baseline FTIR CSV and multiple sample CSVs, overlay spectra in the browser, score how each sample compares to the baseline, and batch-export publication-ready PNG graphs — with optional Gemini-powered analysis and chat.
 
-<video src="./assets/graph-analysis-sr.mov" controls width="100%" title="Application screen recording"></video>
+## Demo
 
-<p align="center"><em>Application walkthrough</em></p>
+Screen recording of the application:
+
+[`assets/graph-analysis-sr.mov`](./assets/graph-analysis-sr.mov)
+
+<video controls width="100%" title="Application screen recording">
+  <source src="./assets/graph-analysis-sr.mov" type="video/quicktime">
+  Your browser does not support the video tag. <a href="./assets/graph-analysis-sr.mov">Download graph-analysis-sr.mov</a>
+</video>
 
 ## Overview
 

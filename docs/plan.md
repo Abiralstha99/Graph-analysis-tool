@@ -170,6 +170,16 @@ CREATE TABLE jobs (
     FOREIGN KEY (analysis_id) REFERENCES analyses(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id)     REFERENCES users(id)    ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- chat_sessions: persisted chat history per authenticated user
+CREATE TABLE chat_sessions (
+    id         VARCHAR(64) PRIMARY KEY,
+    user_id    INT         NOT NULL,
+    messages   JSON        NOT NULL,
+    created_at TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_chat_sessions_user_id (user_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
 ---
@@ -189,6 +199,7 @@ backend/
     analysis_service.py  ← Person 1: validate → parse → score → persist
     job_service.py       ← Person 2: create / update / query jobs
     auth_service.py      ← Person 2: rate limiting, password rules
+    chat_session_service.py ← Person 2: persist chat_sessions rows
   schemas/
     analysis.py          ← Person 1: Pydantic request/response models
     job.py               ← Person 2: Pydantic job models
@@ -237,7 +248,7 @@ Both engineers complete these before any new feature work.
 | 4 | Replace every `detail=str(e)` with the canonical error envelope | Person 2 |
 | 5 | Move hardcoded `http://localhost:5000` in `frontend/src/services/api.ts` into a Vite env var | Person 1 |
 | 6 | Add `Depends(require_auth)` to `/api/v1/files` and all analysis and chat routes | Person 2 |
-| 7 | Chat `conversation_store` is an in-memory dict — document it as a known limitation and file a follow-up ticket; Person 2 migrates it to a DB table as part of auth hardening | Person 2 |
+| 7 | Chat `conversation_store` is an in-memory dict — Person 2 migrates it to a `chat_sessions` DB table as part of auth hardening | Person 2 |
 | 8 | Update `README.md` and OpenAPI title to reflect actual routes after all of the above | Both |
 
 ---

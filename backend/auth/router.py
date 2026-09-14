@@ -5,10 +5,18 @@ from mysql.connector import IntegrityError
 
 from ..database import get_db_connection
 from ..middleware.auth import require_auth
-from .passwords import hash_password, verify_password
 from ..schemas.auth import ChangePasswordPayload, UserAuth
+from ..services.auth_service import validate_password_strength
+from .passwords import hash_password, verify_password
 
 router = APIRouter(tags=["auth"])
+
+
+def _error(status_code: int, code: str, message: str) -> HTTPException:
+    return HTTPException(
+        status_code=status_code,
+        detail={"code": code, "message": message, "details": {}},
+    )
 
 
 @router.post("/register")
@@ -16,10 +24,13 @@ def register(payload: UserAuth):
     username = payload.username.strip()
     password = payload.password
     if not username or not password:
-        raise HTTPException(
+        raise _error(
             status.HTTP_400_BAD_REQUEST,
-            detail="username and password required",
+            "VALIDATION_ERROR",
+            "username and password required",
         )
+
+    validate_password_strength(password)
 
     hashed = hash_password(password)
     conn = None
@@ -33,16 +44,18 @@ def register(payload: UserAuth):
         conn.commit()
         return {"status": "ok", "username": username}
     except IntegrityError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="username already exists",
+        raise _error(
+            status.HTTP_400_BAD_REQUEST,
+            "VALIDATION_ERROR",
+            "username already exists",
         )
     except HTTPException:
         raise
     except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An internal error occurred. Please try again.",
+        raise _error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "INTERNAL_ERROR",
+            "An internal error occurred. Please try again.",
         )
     finally:
         if conn:
@@ -54,9 +67,10 @@ def login(payload: UserAuth, request: Request):
     username = payload.username.strip()
     password = payload.password
     if not username or not password:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="username and password required",
+        raise _error(
+            status.HTTP_400_BAD_REQUEST,
+            "VALIDATION_ERROR",
+            "username and password required",
         )
 
     conn = None
@@ -69,19 +83,29 @@ def login(payload: UserAuth, request: Request):
         )
         row = cur.fetchone()
         if not row:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="invalid credentials",
+            raise _error(
+                status.HTTP_401_UNAUTHORIZED,
+                "UNAUTHORIZED",
+                "invalid credentials",
             )
 
         if not verify_password(password, row["password"]):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="invalid credentials",
+            raise _error(
+                status.HTTP_401_UNAUTHORIZED,
+                "UNAUTHORIZED",
+                "invalid credentials",
             )
 
         request.session["user_id"] = int(row["id"])
         return {"status": "ok", "user_id": row["id"]}
+    except HTTPException:
+        raise
+    except Exception:
+        raise _error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "INTERNAL_ERROR",
+            "An internal error occurred. Please try again.",
+        )
     finally:
         if conn:
             conn.close()
@@ -102,16 +126,13 @@ def change_password(
     new_password = payload.new_password
 
     if not current_password or not new_password:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Both current and new passwords are required",
+        raise _error(
+            status.HTTP_400_BAD_REQUEST,
+            "VALIDATION_ERROR",
+            "Both current and new passwords are required",
         )
 
-    if len(new_password) < 6:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="New password must be at least 6 characters",
-        )
+    validate_password_strength(new_password)
 
     conn = None
     try:
@@ -125,15 +146,17 @@ def change_password(
         row = cur.fetchone()
 
         if not row:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found",
+            raise _error(
+                status.HTTP_404_NOT_FOUND,
+                "NOT_FOUND",
+                "User not found",
             )
 
         if not verify_password(current_password, row["password"]):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Current password is incorrect",
+            raise _error(
+                status.HTTP_401_UNAUTHORIZED,
+                "UNAUTHORIZED",
+                "Current password is incorrect",
             )
 
         new_hashed = hash_password(new_password)
@@ -147,9 +170,10 @@ def change_password(
     except HTTPException:
         raise
     except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An internal error occurred. Please try again.",
+        raise _error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "INTERNAL_ERROR",
+            "An internal error occurred. Please try again.",
         )
     finally:
         if conn:

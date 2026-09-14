@@ -1,12 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from typing import List, Optional
 from datetime import datetime
 import json
 
 from .config import Settings
+from .database import get_db_connection
 from .middleware.auth import require_auth
 from .schemas.chat import ChatMessage, ChatRequest, ChatResponse
+from .services.chat_session_service import (
+    count_sessions,
+    delete_session,
+    get_session,
+    save_session,
+)
 
 try:
     import google.generativeai as genai
@@ -16,9 +23,6 @@ except ImportError:
     genai = None
 
 router = APIRouter(prefix="/chat", tags=["Chatbox"])
-
-# In-memory storage for conversation sessions (in production, use a database)
-conversation_sessions: dict = {}
 
 _GEMINI_MODELS = [
     'models/gemini-2.5-flash',
@@ -222,11 +226,22 @@ async def send_chat_message(request: ChatRequest, user_id: int = Depends(require
             status="fallback_error",
         )
 
-    # Persist conversation in memory
-    conversation_sessions.setdefault(conversation_id, []).extend([
-        {"role": "user", "content": request.message, "timestamp": datetime.now().isoformat()},
-        {"role": "assistant", "content": ai_text, "timestamp": datetime.now().isoformat()},
-    ])
+    # Persist conversation for the authenticated user
+    conn = None
+    try:
+        conn = get_db_connection()
+        save_session(
+            conn,
+            conversation_id,
+            user_id,
+            [
+                {"role": "user", "content": request.message, "timestamp": datetime.now().isoformat()},
+                {"role": "assistant", "content": ai_text, "timestamp": datetime.now().isoformat()},
+            ],
+        )
+    finally:
+        if conn:
+            conn.close()
 
     return ChatResponse(
         response=ai_text,
@@ -239,15 +254,27 @@ async def send_chat_message(request: ChatRequest, user_id: int = Depends(require
 @router.get("/conversation/{conversation_id}")
 async def get_conversation(conversation_id: str, user_id: int = Depends(require_auth)):
     """Retrieve a conversation history by ID."""
-    if conversation_id not in conversation_sessions:
+    conn = None
+    try:
+        conn = get_db_connection()
+        messages = get_session(conn, conversation_id, user_id)
+    finally:
+        if conn:
+            conn.close()
+
+    if messages is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Conversation not found.",
+            detail={
+                "code": "NOT_FOUND",
+                "message": "Conversation not found.",
+                "details": {},
+            },
         )
 
     return {
         "conversation_id": conversation_id,
-        "messages": conversation_sessions[conversation_id],
+        "messages": messages,
         "status": "success",
     }
 
@@ -255,8 +282,13 @@ async def get_conversation(conversation_id: str, user_id: int = Depends(require_
 @router.delete("/conversation/{conversation_id}")
 async def clear_conversation(conversation_id: str, user_id: int = Depends(require_auth)):
     """Clear a conversation history."""
-    if conversation_id in conversation_sessions:
-        del conversation_sessions[conversation_id]
+    conn = None
+    try:
+        conn = get_db_connection()
+        delete_session(conn, conversation_id, user_id)
+    finally:
+        if conn:
+            conn.close()
 
     return {
         "message": "Conversation cleared successfully",
@@ -347,9 +379,19 @@ async def ask_quick_question(request: dict, user_id: int = Depends(require_auth)
 async def chat_health():
     """Health check for chat service"""
     gemini_status = "configured" if Settings.from_environment().gemini_api_key else "not_configured"
+    active_conversations = 0
+    conn = None
+    try:
+        conn = get_db_connection()
+        active_conversations = count_sessions(conn)
+    except Exception:
+        active_conversations = 0
+    finally:
+        if conn:
+            conn.close()
     return {
         "status": "ok",
         "gemini_api": gemini_status,
         "service": "chatbox",
-        "active_conversations": len(conversation_sessions),
+        "active_conversations": active_conversations,
     }

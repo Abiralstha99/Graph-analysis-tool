@@ -11,4 +11,10 @@ from ..config import Settings
 def configure_session_middleware(app: FastAPI) -> None:
     """Attach SessionMiddleware using SESSION_SECRET / SECRET_KEY or a generated key."""
     session_secret = Settings.from_environment().session_secret or secrets.token_urlsafe(32)
-    app.add_middleware(SessionMiddleware, secret_key=session_secret)
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=session_secret,
+        https_only=True,
+        same_site="lax",
+        max_age=86400,
+    )

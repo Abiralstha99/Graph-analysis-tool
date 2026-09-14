@@ -14,10 +14,14 @@ def get_db_connection(settings: Settings | None = None):
     if not all([settings.db_host, settings.db_user, settings.db_pass, settings.db_name]):
         raise RuntimeError("Database environment variables DB_HOST, DB_USER, DB_PASS, DB_NAME must be set")
 
-    return mysql.connector.connect(
-        host=settings.db_host,
-        user=settings.db_user,
-        password=settings.db_pass,
-        database=settings.db_name,
-        autocommit=False,
-    )
+    connect_kwargs = {
+        "host": settings.db_host,
+        "user": settings.db_user,
+        "password": settings.db_pass,
+        "database": settings.db_name,
+        "autocommit": False,
+    }
+    if settings.db_port is not None:
+        connect_kwargs["port"] = settings.db_port
+
+    return mysql.connector.connect(**connect_kwargs)

@@ -71,6 +71,16 @@ CREATE TABLE IF NOT EXISTS jobs (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- chat_sessions: persisted chat history per authenticated user
+CREATE TABLE IF NOT EXISTS chat_sessions (
+    id         VARCHAR(64) PRIMARY KEY,
+    user_id    INT         NOT NULL,
+    messages   JSON        NOT NULL,
+    created_at TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_chat_sessions_user_id (user_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Optional: Create a test user (password: testpass123)
 -- Password hash generated using bcrypt
 -- INSERT INTO users (username, password) VALUES 
@@ -81,6 +91,7 @@ DESCRIBE users;
 DESCRIBE graphs;
 DESCRIBE analyses;
 DESCRIBE jobs;
+DESCRIBE chat_sessions;
 
 -- Display success message
 SELECT 'Database setup complete!' AS status;

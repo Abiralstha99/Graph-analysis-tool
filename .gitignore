@@ -70,6 +70,9 @@ backend/static/generated_graphs/
 # Docker
 docker-compose.override.yml
 
+# Local database dumps
+mrg_labs_db_aiven.sql
+
 # Local planning and agent artifacts
 /.agents/
 docs/onboarding.md

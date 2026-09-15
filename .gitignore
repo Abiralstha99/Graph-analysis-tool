@@ -69,3 +69,9 @@ backend/static/generated_graphs/
 
 # Docker
 docker-compose.override.yml
+
+# Local planning and agent artifacts
+/.agents/
+docs/onboarding.md
+docs/plan.md
+docs/cleanup-verification.md
